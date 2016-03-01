@@ -11,13 +11,15 @@
 // このシンボルをdefineしなければ、pext命令をソフトウェアでエミュレートする。
 // 古いCPUのPCで開発をしたていて、遅くてもいいからともかく動いて欲しいときにそうすると良い。
 
-#define USE_AVX2
+// プロパティへ移動
+// #define USE_AVX2 
 
 // SSE4.2以降でサポートされた命令を使うか。
 // このシンボルをdefineしなければ、popcnt命令をソフトウェアでエミュレートする。
 // 古いCPUのPCで開発をしたていて、遅くてもいいからともかく動いて欲しいときにそうすると良い。
 
-#define USE_SSE42
+// プロパティへ移動
+// #define USE_SSE42
 
 
 // 通例hash keyは64bitだが、これを128にするとPosition::state()->long_key()から128bit hash keyが
