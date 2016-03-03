@@ -1,4 +1,4 @@
-
+ï»¿
 #include "CppUnitTest.h"
 #include "bitboard.h"
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -7,14 +7,14 @@ namespace UnitTest
 {		
 	TEST_MODULE_INITIALIZE(TestInitialize)
 	{
-		// ˆê“x‚¾‚¯ŒÄ‚Î‚ê‚éH‰Šú‰»
+		// ä¸€åº¦ã ã‘å‘¼ã°ã‚Œã‚‹ï¼ŸåˆæœŸåŒ–
 
 		Bitboards::init();
 	}
 
 	TEST_MODULE_CLEANUP(TestCleanup)
 	{
-		// ˆê“x‚¾‚¯ŒÄ‚Î‚ê‚éH
+		// ä¸€åº¦ã ã‘å‘¼ã°ã‚Œã‚‹ï¼Ÿ
 	}
 
 

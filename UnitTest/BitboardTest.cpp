@@ -1,4 +1,4 @@
-
+ï»¿
 #include "CppUnitTest.h"
 
 #include "bitboard.h"
@@ -18,7 +18,7 @@ namespace UnitTest
 
 		TEST_METHOD(EqualTest)
 		{
-			// TODO: ƒeƒXƒg ƒR[ƒh‚ğ‚±‚±‚É‘}“ü‚µ‚Ü‚·
+			// TODO: ãƒ†ã‚¹ãƒˆ ã‚³ãƒ¼ãƒ‰ã‚’ã“ã“ã«æŒ¿å…¥ã—ã¾ã™
 
 			Bitboard aa(0x12345678, 0x9abcdef1);
 			Bitboard bb;
@@ -36,8 +36,8 @@ namespace UnitTest
 		}
 
 		BEGIN_TEST_METHOD_ATTRIBUTE(InitSQTest)
-			TEST_OWNER(L"ƒI[ƒi[")
-			TEST_DESCRIPTION(L"ƒfƒBƒXƒNƒŠƒvƒVƒ‡ƒ“")
+			TEST_OWNER(L"ã‚ªãƒ¼ãƒŠãƒ¼")
+			TEST_DESCRIPTION(L"ãƒ‡ã‚£ã‚¹ã‚¯ãƒªãƒ—ã‚·ãƒ§ãƒ³")
 			END_TEST_METHOD_ATTRIBUTE()
 
 			TEST_METHOD(InitSQTest)
