@@ -152,5 +152,96 @@ namespace UnitTest
 			Assert::AreEqual(Bitboard::part(SQ_82), 1);
 			Assert::AreEqual(Bitboard::part(SQ_91), 1);
 		}
+
+		TEST_METHOD(PopTest)
+		{
+			Bitboard aa(0x1010, 0x1);
+
+			Assert::AreEqual((int)aa.pop(), 4);
+			Assert::AreEqual((int)aa.pop(), 12);
+			Assert::AreEqual((int)aa.pop(), 63);
+
+
+			{ Bitboard bb(1, 1); Assert::AreEqual((int)bb.pop_c(), 0); }
+			{ Bitboard bb(1 << 8, 1); Assert::AreEqual((int)bb.pop_c(), 8); }
+			{ Bitboard bb(1 << 30, 1); Assert::AreEqual((int)bb.pop_c(), 30); }
+			{ Bitboard bb(1ULL << 50, 1); Assert::AreEqual((int)bb.pop_c(), 50); }
+			{ Bitboard bb(1ULL << 62, 1); Assert::AreEqual((int)bb.pop_c(), 62); }
+			{ Bitboard bb(0, 1 << 0); Assert::AreEqual((int)bb.pop_c(), 63); }
+			{ Bitboard bb(0, 1 << 8); Assert::AreEqual((int)bb.pop_c(), 63 + 8); }
+			{ Bitboard bb(0, 1 << 11); Assert::AreEqual((int)bb.pop_c(), 63 + 11); }
+
+
+			aa.set(0x1010, 0x37);
+			Assert::AreEqual((int)aa.pop_from_p0(), 4);
+			Assert::AreEqual((int)aa.pop_from_p0(), 12);
+			Assert::AreEqual((int)aa.pop_from_p1(), 63 + 0);
+			Assert::AreEqual((int)aa.pop_from_p1(), 63 + 1);
+			Assert::AreEqual((int)aa.pop_from_p1(), 63 + 2);
+			Assert::AreEqual((int)aa.pop_from_p1(), 63 + 4);
+			Assert::AreEqual((int)aa.pop_from_p1(), 63 + 5);
+		}
+
+		TEST_METHOD(PopcountTest)
+		{
+
+			Bitboard aa(0x123456789ABCDEF0ULL, 0x54321);
+
+			Assert::AreEqual(aa.pop_count(), 32 + 7);
+		}
+
+		TEST_METHOD(AddTest)
+		{
+			Bitboard aa(0x123456789ABCDEF0ULL, 0x54321);
+			Bitboard bb(0x123456789ABCDEF0ULL, 0x54321);
+			Bitboard cc = aa + bb;
+			Assert::AreEqual(cc.p[0], 0x2468ACF13579BDE0ULL);
+			Assert::AreEqual(cc.p[1], 0xA8642ULL);
+
+			aa.set(0xFEDCBA9876543210, 0x12345);
+			cc = aa + bb;
+			Assert::AreEqual(cc.p[0], 0x1111111111111100ULL);
+			Assert::AreEqual(cc.p[1], 0x66666ULL); // 桁上りは無し？
+
+			cc -= bb;
+			Assert::AreEqual(cc.p[0], 0xFEDCBA9876543210);
+			Assert::AreEqual(cc.p[1], 0x12345ULL); // 桁下がりは無し？
+
+			aa.set(0x1111222233334444ULL, 0x55557);
+			bb.set(0x4444555566667777ULL, 0x11118);
+
+			cc = aa | bb;
+			Assert::AreEqual(cc.p[0], 0x5555777777777777ULL);
+			Assert::AreEqual(cc.p[1], 0x5555FULL);
+
+			cc = aa & bb;
+			Assert::AreEqual(cc.p[0], 0x22224444ULL);
+			Assert::AreEqual(cc.p[1], 0x11110ULL);
+
+			cc = aa ^ bb;
+			Assert::AreEqual(cc.p[0], 0x5555777755553333ULL);
+			Assert::AreEqual(cc.p[1], 0x4444FULL);
+
+			cc = cc ^ bb;
+			Assert::AreEqual(cc.p[0], aa.p[0]);
+			Assert::AreEqual(cc.p[1], aa.p[1]);
+		}
+
+		TEST_METHOD(ShiftTest)
+		{
+
+			Bitboard aa(0x8000000180000001, 0x80001);
+
+			aa <<= 1;
+			Assert::AreEqual(aa.p[0], 0x300000002ULL);
+			Assert::AreEqual(aa.p[1], 0x100002ULL); // 桁あがり無し？
+
+			aa.set(0x8000000180000001, 0x80001);
+			aa >>= 1;
+			Assert::AreEqual(aa.p[0], 0x40000000C0000000ULL); // 桁下がり無し？
+			Assert::AreEqual(aa.p[1], 0x40000ULL); 
+		}
+
+
 	};
 }
