@@ -41,16 +41,18 @@ struct Stats {
   // このtableの要素の最大値
   static const Value Max = Value(1 << 28);
 
+  // tableの要素の値を取り出す
+  const T* operator[](Square to) const {
+    ASSERT_LV4(is_ok(to));
+    return table[to];
+  }
+  T* operator[](Square to) {
+    ASSERT_LV4(is_ok(to));
+    return table[to];
+  }
+
   // tableのclear
   void clear() { std::memset(table, 0, sizeof(table)); }
-
-  // tableの要素の値を取り出す
-  T get(Piece pc, Square to) const
-  {
-    ASSERT_LV4(is_ok(pc));
-    ASSERT_LV4(is_ok(to));
-    return table[to][pc];
-  }
 
   // tableに指し手を格納する。(Tの型がMoveのとき)
   void update(Piece pc, Square to, Move m)
@@ -70,12 +72,15 @@ struct Stats {
     v = max((Value)-324, v);
     v = min((Value)+324, v);
 
+    // if (abs(int(v) >= 324) return ; のほうが良いのでは..
+
     table[to][pc] -= table[to][pc] * abs(int(v)) / (CM ? 512 : 324);
     table[to][pc] += int(v) * (CM ? 64 : 32);
   }
 
 private:
   // Pieceを升sqに移動させるときの値
+  // ※　Stockfishとは添字が逆順だが、将棋ではPIECE_NBのほうだけが2^Nなので仕方がない。
   T table[SQ_NB_PLUS1][PIECE_NB];
 };
 
@@ -150,7 +155,7 @@ struct MovePicker
     stage = pos.in_check() ? EVASION_START : MAIN_SEARCH_START;
 
     // 置換表の指し手があるならそれを最初に返す。ただしpseudo_legalでなければならない。
-    ttMove = ttMove_ && pos.pseudo_legal(ttMove_) ? ttMove_ : MOVE_NONE;
+    ttMove = ttMove_ && pos.pseudo_legal_s<false,false>(ttMove_) ? ttMove_ : MOVE_NONE;
 
     // 置換表の指し手が引数で渡されていたなら1手生成したことにする。
     // (currentMoves != endMovesであることを、指し手を生成するかどうかの判定に用いている)
@@ -179,7 +184,7 @@ struct MovePicker
     }
 
     // 歩の不成、香の2段目への不成、大駒の不成を除外
-    ttMove = ttMove_ && pos.pseudo_legal_s<false>(ttMove_) ? ttMove_ : MOVE_NONE;
+    ttMove = ttMove_ && pos.pseudo_legal_s<false,false>(ttMove_) ? ttMove_ : MOVE_NONE;
     endMoves += (ttMove != MOVE_NONE);
   }
   
@@ -193,7 +198,7 @@ struct MovePicker
 
     // In ProbCut we generate captures with SEE higher than the given threshold
     ttMove = ttMove_
-      && pos.pseudo_legal(ttMove_)
+      && pos.pseudo_legal_s<false,false>(ttMove_)
       && pos.capture(ttMove_)
       && pos.see(ttMove_) > threshold ? ttMove_ : MOVE_NONE;
 
@@ -299,11 +304,12 @@ struct MovePicker
 
         // killer moveを1手ずつ返すフェーズ
         // (直前に置換表の指し手を返しているし、CAPTURES_PRO_PLUSでの指し手も返しているのでそれらの指し手は除外されるべき)
+        // また、killerの3つ目はcounter moveでこれは先後の区別がないのでpseudo_legal_s<X,true>()を呼び出す必要がある。
       case KILLERS:
         move = *currentMoves++;
         if (move != MOVE_NONE                       // ss->killer[0],[1]からコピーしただけなのでMOVE_NONEの可能性がある
           &&  move != ttMove                        // 置換表の指し手を重複除去しないといけない
-          &&  pos.pseudo_legal_s<false>(move)       // pseudo_legalでない指し手以外に歩や大駒の不成なども除外
+          &&  pos.pseudo_legal_s<false,true>(move)  // pseudo_legalでない指し手以外に歩や大駒の不成なども除外
           && !pos.capture_or_pawn_promotion(move))  // 直前にCAPTURES_PRO_PLUSで生成している指し手を除外
           return move;
         break;
@@ -426,8 +432,8 @@ private:
   void score_quiets()
   {
     for (auto& m : *this)
-      m.value = history.get(pos.moved_piece(m), move_to(m))
-      + counterMoveHistory->get(pos.moved_piece(m), move_to(m));
+      m.value = history[move_to(m)][pos.moved_piece(m)]
+      + (*counterMoveHistory)[move_to(m)][pos.moved_piece(m)];
   }
 
   void score_evasions()
@@ -454,7 +460,7 @@ private:
         m.value = (Value)Eval::PieceValueCapture[pos.piece_on(move_to(m))]
         - Value(type_of(pos.moved_piece(m))) + HistoryStats::Max;
       else
-        m.value = history.get(pos.moved_piece(m),move_to(m));
+        m.value = history[move_to(m)][pos.moved_piece(m)];
   }
 
   const Position& pos;

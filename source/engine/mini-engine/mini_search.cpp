@@ -168,7 +168,7 @@ namespace YaneuraOuMini
 
     // 直前に移動させた升(その升に移動させた駒がある)
     Square prevSq = move_to((ss - 1)->currentMove);
-    auto& cmh = CounterMoveHistory.get(pos.piece_on(prevSq), prevSq);
+    auto& cmh = CounterMoveHistory[prevSq][pos.piece_on(prevSq)];
     auto thisThread = pos.this_thread();
 
     thisThread->history.update(pos.moved_piece(move), move_to(move), bonus);
@@ -197,7 +197,7 @@ namespace YaneuraOuMini
       // 直前がcaptureではないから、2手前に動かした駒は捕獲されずに盤上にあるはずであり、
       // その升の駒を盤から取り出すことが出来る。
       Square prevPrevSq = move_to((ss - 2)->currentMove);
-      CounterMoveStats& prevCmh = CounterMoveHistory.get(pos.piece_on(prevPrevSq), prevPrevSq);
+      CounterMoveStats& prevCmh = CounterMoveHistory[prevPrevSq][pos.piece_on(prevPrevSq)];
       prevCmh.update(pos.piece_on(prevSq), prevSq, -bonus - 2 * (depth + 1) / ONE_PLY);
     }
 
@@ -310,6 +310,9 @@ namespace YaneuraOuMini
     //     eval呼び出し
     // -----------------------
 
+    // mate1ply()でCheckInfo.pinnedを使うのでここで初期化しておく。
+    pos.check_info_update();
+
     if (InCheck)
     {
       // 王手がかかっているならすべての指し手を調べるべきなのでevaluate()は呼び出さない。
@@ -393,7 +396,6 @@ namespace YaneuraOuMini
     // searchから呼び出された場合、直前の指し手がMOVE_NULLであることがありうるが、
     // 静止探索の1つ目の深さではrecaptureを生成しないならこれは問題とならない。
     // ToDo: あとでNULL MOVEを実装したときにrecapture以外も生成するように修正する。
-    pos.check_info_update();
     MovePicker mp(pos, ttMove, depth, pos.this_thread()->history, move_to((ss - 1)->currentMove));
     Move move;
     Value value;
@@ -893,10 +895,10 @@ namespace YaneuraOuMini
     auto prevPc = pos.piece_on(prevSq);
 
     // toの升に駒pcを動かしたことに対する応手
-    auto cm = thisThread->counterMoves.get(prevPc, prevSq);
+    auto cm = thisThread->counterMoves[prevSq][prevPc];
 
     // counter history
-    const auto& cmh = CounterMoveHistory.get(prevPc, prevSq);
+    const auto& cmh = CounterMoveHistory[prevSq][prevPc];
 
     pos.check_info_update();
     MovePicker mp(pos, ttMove, depth, thisThread->history, cmh, cm, ss);
@@ -963,8 +965,8 @@ namespace YaneuraOuMini
 
         if (depth <= 4 * ONE_PLY
           && move != ss->killers[0]
-          && thisThread->history.get(pos.moved_piece(move),move_to(move)) < VALUE_ZERO
-          && cmh.get(pos.moved_piece(move), move_to(move)) < VALUE_ZERO)
+          && thisThread->history[move_to(move)][pos.moved_piece(move)] < VALUE_ZERO
+          && cmh[move_to(move)][pos.moved_piece(move)] < VALUE_ZERO)
           continue;
 
         // 他、色々すべき
