@@ -422,6 +422,11 @@ namespace YaneuraOuClassic
 
     StateInfo st;
 
+    // このあとnodeを展開していくので、evaluate()の差分計算ができないと速度面で損をするから、
+    // evaluate()を呼び出していないなら呼び出しておく。
+    if (pos.state()->sumKKP == VALUE_NONE)
+      evaluate(pos);
+
     while ((move = mp.next_move()) != MOVE_NONE)
     {
       // -----------------------
@@ -727,12 +732,18 @@ namespace YaneuraOuClassic
     Move bestMove = MOVE_NONE;
     const bool InCheck = pos.checkers();
 
+    CheckInfoUpdate ciu = CHECK_INFO_UPDATE_NONE;
+
     // RootNodeでは1手詰め判定、ややこしくなるのでやらない。(RootMovesの入れ替え等が発生するので)
     // 置換表にhitしたときも1手詰め判定は行われていると思われるのでこの場合もはしょる。
     // depthの残りがある程度ないと、1手詰めはどうせこのあとすぐに見つけてしまうわけで1手詰めを
     // 見つけたときのリターン(見返り)が少ない。
     if (!RootNode && !ttHit && depth > ONE_PLY && !InCheck)
     {
+      // mate1ply()の呼び出しのためにCheckInfo.pinnedの更新が必要。
+      pos.check_info_update_pinned();
+      ciu = CHECK_INFO_UPDATE_PINNED; // pinnedのupdateだけ終わったとマークしておく。
+
       bestMove = pos.mate1ply();
       if (bestMove != MOVE_NONE)
       {
@@ -850,6 +861,10 @@ namespace YaneuraOuClassic
       // 残り探索深さと評価値によるnull moveの深さを動的に減らす
       Depth R = ((823 + 67 * depth) / 256 + std::min((int)((eval - beta) / PawnValue), 3)) * ONE_PLY;
 
+      // このタイミングでcheck_infoをupdateしないと、null_moveのときにStateInfo(含むCheckInfo)をコピーされてしまい、まずい。
+      pos.check_info_update(ciu);
+      ciu = CHECK_INFO_UPDATE_ALL; // updateはすべて終わったとマークしておく。
+
       pos.do_null_move(st);
       (ss + 1)->skipEarlyPruning = true;
 
@@ -902,7 +917,10 @@ namespace YaneuraOuClassic
       ASSERT_LV3((ss - 1)->currentMove != MOVE_NONE);
       ASSERT_LV3((ss - 1)->currentMove != MOVE_NULL);
 
-      pos.check_info_update();
+      // CheckInfoのうち、残りのものをupdateしてやる。
+      pos.check_info_update(ciu);
+      ciu = CHECK_INFO_UPDATE_ALL; // updateはすべて終わったとマークしておく。
+
       // このnodeの指し手としては置換表の指し手を返したあとは、直前の指し手で捕獲された駒による評価値の上昇を
       // 上回るようなcaptureの指し手のみを生成する。
       MovePicker mp(pos, ttMove, thisThread->history, (Value)Eval::PieceValueCapture[pos.captured_piece_type()]);
@@ -989,7 +1007,14 @@ namespace YaneuraOuClassic
     // counter history
     const auto& cmh = CounterMoveHistory[prevSq][prevPc];
 
-    pos.check_info_update();
+    // CheckInfoのうち、残りのものをupdateしてやる。
+    pos.check_info_update(ciu);
+    
+    // このあとnodeを展開していくので、evaluate()の差分計算ができないと速度面で損をするから、
+    // evaluate()を呼び出していないなら呼び出しておく。
+    if (pos.state()->sumKKP == VALUE_NONE)
+      evaluate(pos);
+
     MovePicker mp(pos, ttMove, depth, thisThread->history, cmh, cm, ss);
 
     //  一手ずつ調べていく

@@ -78,7 +78,7 @@ namespace Eval
     Square sq_wk1 = Inv(pos.king_square(WHITE));
 
     auto& pos_ = *const_cast<Position*>(&pos);
-    auto list = pos_.eval_list().piece_list();
+    auto list = pos_.eval_list()->piece_list();
 
     int i, j;
     BonaPiece k0, k1;
@@ -127,9 +127,9 @@ namespace Eval
       goto CALC_DIFF_END;
     }
 
-    // 遡る一つだけ
+    // 遡るのは一つだけ
     // ひとつずつ遡りながらsumKPPがVALUE_NONEでないところまで探してそこからの差分を計算することは出来るが
-    // レアケースだし、StateInfoのEvalListを持たせる必要が出てきて、あまり得しない。
+    // レアケースだし、StateInfoにEvalListを持たせる必要が出てきて、あまり得しない。
     auto now = st;
     auto prev = st->previous;
     if (prev->sumKKP == VALUE_NONE)
@@ -152,7 +152,7 @@ namespace Eval
       auto sq_bk0 = pos.king_square(BLACK);
       auto sq_wk1 = Inv(pos.king_square(WHITE));
 
-      auto now_list = pos.eval_list().piece_list();
+      auto now_list = pos.eval_list()->piece_list();
 
       int i, j;
       auto& dp = now->dirtyPiece;
@@ -363,7 +363,7 @@ namespace Eval
     Square sq_bk0 = pos.king_square(BLACK);
     Square sq_wk1 = Inv(pos.king_square(WHITE));
 
-    auto list = pos.eval_list().piece_list();
+    auto list = pos.eval_list()->piece_list();
 
     int i, j;
     BonaPiece k0, k1;

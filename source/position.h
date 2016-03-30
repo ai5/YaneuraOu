@@ -21,6 +21,7 @@ extern std::string SFEN_HIRATE;
 
 enum CheckInfoUpdate
 {
+  CHECK_INFO_UPDATE_NONE,           // 何もupdateされていない状態
   CHECK_INFO_UPDATE_ALL,            // 以下の2つともupdate
   CHECK_INFO_UPDATE_PINNED,         // pinnedの情報だけupdate
   CHECK_INFO_UPDATE_WITHOUT_PINNED, // pinned以外の情報だけupdate
@@ -360,6 +361,25 @@ struct Position
   // gives_check()やlegal()、do_move()を呼び出すときは事前にこれを呼び出しておくこと。
   void check_info_update() { st->checkInfo.update<CHECK_INFO_UPDATE_ALL>(*this); }
 
+  // check_infoのupdateを段階的に行ないたいときに用いる。
+  // 引数としてはすでに初期化が終わっているupdateを指定する。
+  void check_info_update(CheckInfoUpdate c)
+  {
+    switch (c)
+    {
+      // 何も終わっていないので丸ごと初期化
+    case CHECK_INFO_UPDATE_NONE: check_info_update(); break;
+
+      // 全部終わっている
+    case CHECK_INFO_UPDATE_ALL: break; 
+
+      // pinnedだけ終わっているのでそれ以外を初期化
+    case CHECK_INFO_UPDATE_PINNED: check_info_update_without_pinned(); break;
+
+    default: UNREACHABLE;
+    }
+  }
+
   // CheckInfoのpinnedだけ更新したいとき(mate1ply()で必要なので)
   void check_info_update_pinned() { st->checkInfo.update<CHECK_INFO_UPDATE_PINNED>(*this); }
   // CheckInfoのpinned以外を更新したいとき(mate1ply()のあとに初期化するときに必要なので)
@@ -369,7 +389,7 @@ struct Position
 
 #ifndef EVAL_NO_USE
   // 評価関数で使うための、どの駒番号の駒がどこにあるかなどの情報。
-  Eval::EvalList eval_list() const { return evalList; }
+  const Eval::EvalList* eval_list() const { return &evalList; }
 #endif
 
 #ifdef  USE_SEE
