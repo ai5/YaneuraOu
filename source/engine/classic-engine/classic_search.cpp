@@ -385,6 +385,7 @@ namespace YaneuraOuClassic
 
       // mate1ply()の呼び出しのためにCheckInfo.pinnedの更新が必要。
       pos.check_info_update_pinned();
+#ifdef MATE_1PLY
       Move m = pos.mate1ply();
       if (m != MOVE_NONE)
       {
@@ -394,7 +395,7 @@ namespace YaneuraOuClassic
 
         return bestValue;
       }
-
+#endif
       // 王手がかかっていなくてPvNodeでかつ、bestValueがalphaより大きいならそれをalphaの初期値に使う。
       // 王手がかかっているなら全部の指し手を調べたほうがいい。
       if (PvNode && bestValue > alpha)
@@ -743,7 +744,7 @@ namespace YaneuraOuClassic
       // mate1ply()の呼び出しのためにCheckInfo.pinnedの更新が必要。
       pos.check_info_update_pinned();
       ciu = CHECK_INFO_UPDATE_PINNED; // pinnedのupdateだけ終わったとマークしておく。
-
+#ifdef MATE_1PLY
       bestMove = pos.mate1ply();
       if (bestMove != MOVE_NONE)
       {
@@ -754,6 +755,7 @@ namespace YaneuraOuClassic
 
         return bestValue;
       }
+#endif
     }
 
     // -----------------------
