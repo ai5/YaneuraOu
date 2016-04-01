@@ -231,6 +231,7 @@ struct MovePicker
 
     case GOOD_RECAPTURES:
       endMoves = generateMoves<RECAPTURES>(pos, moves, recaptureSquare);
+      score_captures(); // CAPTUREの指し手の並べ替え
       break;
 
       // あとで実装する(↑で生成して返さなかった指し手を返すフェーズ)
@@ -381,8 +382,9 @@ struct MovePicker
 
         // 取り返す指し手。これはすでにrecaptureの指し手だけが生成されているのでそのまま返す。
       case GOOD_RECAPTURES:
-        move = *currentMoves++;
-        //        move = pick_best(currentMoves++, endMoves);
+        // recaptureの指し手が2つ以上あることは稀なのでここでオーダリングしてもあまり意味をなさないが、
+        // 生成される指し手自体が少ないなら、pick_best()のコストはほぼ無視できるのでこれはやらないよりはマシ。
+        move = pick_best(currentMoves++, endMoves);
         return move;
 
       case STOP:
