@@ -88,6 +88,7 @@ struct StateInfo {
   int continuousCheck[COLOR_NB];
 
   // ---- ここから下のやつは do_move()のときにコピーされない
+  // ※　ただし、do_null_move()のときは丸ごとコピーされる。
 
   // 現局面で手番側に対して王手をしている駒のbitboard。Position::do_move()で更新される。
   Bitboard checkersBB;
@@ -97,19 +98,19 @@ struct StateInfo {
 
   // この局面のハッシュキー
   // ※　次の局面にdo_move()で進むときに最終的な値が設定される
-  // key_board()は盤面のhash。key_hand()は手駒のhash。それぞれ加算したのがkey() 盤面のhash。
-  // key_board()のほうは、手番も込み。
-  // key_exclusion()は、singular extensionのために現在のkey()に一定の値を足したものを返す。
-  Key key() const { return long_key(); }
-  Key key_board() const { return long_key_board(); }
-  Key key_hand() const { return long_key_hand(); }
-  Key key_exclusion() const { return long_key_exclusion(); }
+  // board_key()は盤面のhash。hand_key()は手駒のhash。それぞれ加算したのがkey() 盤面のhash。
+  // board_key()のほうは、手番も込み。
+  // exclusion_key()は、singular extensionのために現在のkey()に一定の値を足したものを返す。
+  Key key()                     const { return long_key(); }
+  Key board_key()               const { return board_long_key(); }
+  Key hand_key()                const { return hand_long_key(); }
+  Key exclusion_key()           const { return exclusion_long_key(); }
 
   // HASH_KEY_BITSが128のときはKey128が返るhash key,256のときはKey256
-  HASH_KEY long_key() const { return key_board_ + key_hand_; }
-  HASH_KEY long_key_board() const { return key_board_; }
-  HASH_KEY long_key_hand() const { return key_hand_; }
-  HASH_KEY long_key_exclusion() const;
+  HASH_KEY long_key()           const { return board_key_ + hand_key_; }
+  HASH_KEY board_long_key()     const { return board_key_; }
+  HASH_KEY hand_long_key()      const { return hand_key_; }
+  HASH_KEY exclusion_long_key() const;
   
   // この局面における手番側の持ち駒。優等局面の判定のために必要。
   Hand hand;
@@ -150,8 +151,8 @@ struct StateInfo {
 #endif
 
   // HASH_KEY_BITSで128を指定した場合はBitboardにHashKeyが入っている。
-  HASH_KEY key_board_;
-  HASH_KEY key_hand_;
+  HASH_KEY board_key_;
+  HASH_KEY hand_key_;
 
   // 一つ前の局面に遡るためのポインタ。
   // NULL MOVEなどでそこより遡って欲しくないときはnullptrを設定しておく。
@@ -224,6 +225,14 @@ struct Position
   // この指し手によって移動させる駒を返す
   // 後手の駒打ちは後手の駒が返る。
   Piece moved_piece(Move m) const { return is_drop(m) ? (move_dropped_piece(m) + (sideToMove==WHITE ? PIECE_WHITE : NO_PIECE)) : piece_on(move_from(m)); }
+
+  // moved_pieceの拡張版。駒打ちのときは、打ち駒(+32)を加算した駒種を返す。
+  // historyなどでUSE_DROPBIT_IN_STATSを有効にするときに用いる。
+  Piece moved_piece_ex(Move m) const {
+    return is_drop(m)
+      ? Piece((move_dropped_piece(m) + (sideToMove == WHITE ? PIECE_WHITE : NO_PIECE)) + 32)
+      : piece_on(move_from(m));
+  }
 
   // 連続王手の千日手等で引き分けかどうかを返す
   RepetitionState is_repetition(const int repPly = 16) const;
@@ -332,13 +341,10 @@ struct Position
   // ※　置換表の検査だが、pseudo_legal()で擬似合法手かどうかを判定したあとlegal()で自殺手でないことを
   // 確認しなくてはならない。このためpseudo_legal()とlegal()とで重複する自殺手チェックはしていない。
   // 注意 : 事前にcheck_info_update()が呼び出されていること。
-  bool pseudo_legal(const Move m) const { return pseudo_legal_s<true,false>(m); }
+  bool pseudo_legal(const Move m) const { return pseudo_legal_s<true>(m); }
 
   // All == false        : 歩や大駒の不成に対してはfalseを返すpseudo_legal()
-  // CounterMove == true : CounterMoveでは先後の指し手を区別していないので先手(後手)の指し手として後手(先手)の指し手が混じることがある。
-  //    例) 2段目への先手の桂打ち。
-  // これをチェックするモード
-  template <bool All , bool CounterMove > bool pseudo_legal_s(const Move m) const;
+  template <bool All> bool pseudo_legal_s(const Move m) const;
 
   // toの地点に歩を打ったときに打ち歩詰めにならないならtrue。
   // 歩をtoに打つことと、二歩でないこと、toの前に敵玉がいることまでは確定しているものとする。
@@ -471,6 +477,14 @@ struct Position
 
   // ↑の先後別のバージョン。(内部的に用いる)
   template <Color Us> Move mate1ply_impl() const;
+#endif
+
+  // 入玉時の宣言勝ち
+#ifdef USE_ENTERING_KING_WIN
+  // Search::Limits.enteringKingRuleに基いて、宣言勝ちを行なう。
+  // 条件を満たしているとき、MOVE_WINや、玉を移動する指し手(トライルール時)が返る。さもなくば、MOVE_NONEが返る。
+  // mate1ply()から内部的に呼び出す。(そうするとついでに処理出来て良い)
+  Move DeclarationWin() const;
 #endif
 
   // -- 利き

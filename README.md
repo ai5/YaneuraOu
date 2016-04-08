@@ -24,11 +24,20 @@ shogi engine(AI player), stronger than Bonanza6 , educational and tiny code(abou
 
 ## やねうら王classic 
 
-やねうら王classicは、やねうら王miniのソースコードを改良する形で、Apery(WCSC 2015)ぐらいの強さを目指します。(R3000程度の予定)
+やねうら王classicは、やねうら王miniのソースコードを改良する形で、Apery(WCSC 2015)ぐらいの強さを目指しました。入玉宣言機能も追加しました。(R3000程度)
+
+## やねうら王classic-tce
+
+やねうら王classic-tceは、やねうら王classicのソースコードに持ち時間制御(秒読み、フィッシャールールに対応)、ponderの機能を追加したものです。(R3250程度の予定)
+
+## やねうら王twig
+
+やねうら王twigは、やねうら王classic-tceのソースコードをベースに、AperyTwig(2015)風の評価関数にすることで、AperyTwig(2015)と同等以上の強さを目指します。(R3250程度の予定)
 
 ## やねうら王2016 
 
 やねうら王 思考エンジン 2016年版(非公開)
+やねうら王2016は、Hyperopt等を用いて各種ハイパーパラメーターの調整の自動化を行ない、また利きを利用した評価関数にすることで、技巧(2015)と同等以上の強さを目指します。(R3500程度の予定)
 
 ## 連続自動対局フレームワーク
 
@@ -47,19 +56,52 @@ shogi engine(AI player), stronger than Bonanza6 , educational and tiny code(abou
 CSAのライブラリの[ダウンロードページ](http://www.computer-shogi.org/library/)からダウンロードできます。
 
 
-#　俺の作業メモ(2016/04/01 9:00現在)
+#　俺の作業メモ(2016/04/08 9:00現在)
 
-- [ ] ・やねうら王classicに持ち時間制御入れる。
-- [ ] ・やねうら王classic、フィッシャールールに対応
-- [ ] ・やねうら王classic、入玉宣言勝ちに対応
-- [ ] ・やねうら王classicにponder機能入れる。
-- [ ] ・やねうら王classicの探索部、もう少し調整する。
-- [ ] ・やねうら王classicに定跡の選択機能入れる。
-- [ ] ・AperyTwigの評価関数バイナリの読み込みにも対応
-- [ ] ・やねうら王classicのhistory bonus考えなおす。
+- [ ] ・やねうら王classic-TCE(TimeControlEnabled)版を正式に公開する。
+- [ ] ・やねうら王2016用の定跡を自動生成する。
+- [ ] ・local-game-serverに、持ち時間の管理機能入れる。
+- [ ] ・やねうら王twig、AperyTwigの評価関数バイナリの読み込みに対応。
+- [ ] ・やねうら王twigに定跡の選択機能入れる。
+
 
 ※　括弧のなかの+Rは、自己対局時の勝率から計算されるもので、0.5手延長などは顕著に勝率が上がりますが、自己対局以外では効果に乏しいです。
 
+- [x] 2016/04/08・王手がかかっていないときはstaticEvalをVALUE_NONEに。(+R4)
+- [x] 2016/04/07・history等に駒打ちの情報を追加。(+R20)
+- [x] 2016/04/07・dynamic margin実験。
+- [x] 2016/04/07・go infiniteでstopが送られて来ていないのにbestmoveを返すことがあったのを修正。
+- [x] 2016/04/07・優等局面のVALUE変更。
+- [x] 2016/04/07・counter moveには、先手用の指し手に後手の指し手が混じらないように変更。
+- [x] 2016/04/07・自己対戦サーバーでStateStack、1局ごとにクリアするように修正。
+- [x] 2016/04/07・MaxMovesToDrawの設定が無視されていた問題を修正。
+- [x] 2016/04/06・やねうら王classic-tceにsingular extension追加。(+R40)
+- [x] 2016/04/06・やねうら王classic-tce。counter moveに駒種を入れる。
+- [x] 2016/04/06・やねうら王classic-tceに。bestmove changed のカウンター、インクリメントしてなかったの修正。(+R20)
+- [x] 2016/04/06・やねうら王classic-tceに。alpha更新のタイミングでeasy moveをクリアしていなかったの修正。
+- [x] 2016/04/06・やねうら王classic-tceに。qsearch()のfutilityでcaptureを考慮するように変更。
+- [x] 2016/04/06・VALUE_WINまわりの処理、色々修正。
+- [x] 2016/04/06・byoyomiが指定されていないときの動作修正。
+- [x] 2016/04/04・やねうら王classic-tceに、Options["NetworkDelay2"]を追加。
+- [x] 2016/04/04・やねうら王twig→やねうら王classic-tceに名前変更。
+- [x] 2016/04/04・やねうら王twigに持ち時間制御入れる。(+R50)
+- [x] 2016/04/04・やねうら王twigにEasyMoveの判定追加。
+- [x] 2016/04/03・やねうら王twig、終局までの手数に対応。
+- [x] 2016/04/03・やねうら王twig、フィッシャールールに対応
+- [x] 2016/04/03・やねうら王twigにponder対応。(+R50)
+- [x] 2016/04/03・思考時間の計算用のクラス追加。
+- [x] 2016/04/03・benchコマンド時に2個目以降の局面で正しくnpsが表示されなかった問題を修正。
+- [x] 2016/04/03・やねうら王twigからタイマースレッド削除。
+- [x] 2016/04/03・やねうら王classicからやねうら王twigにfork。
+- [x] 2016/04/03・mate1ply修正。(thx. tさん) (+R3)
+- [x] 2016/04/02・やねうら王classicのnonPV時のreduction定数、調整。(+R10)
+- [x] 2016/04/02・kppファイル読み込み時の変換するためのメモリを動的に確保するように変更。
+- [x] 2016/04/02・やねうら王classic、local-game-server、入玉宣言勝ちに対応。
+- [x] 2016/04/02・MovePickerのevasion、capture時のordering調整。(+R13)
+- [x] 2016/04/02・やねうら王classicのPV時のreduction定数、調整。(+R20)
+- [x] 2016/04/01・MovePickerにfollowup move追加。
+- [x] 2016/04/01・やねうら王classicのhistory bonus考えなおす。
+- [x] 2016/04/01・やねうら王classicにsingular extension調整してみる。
 - [x] 2016/04/01・やねうら王classicのRecaptureのオーダリング調整。
 - [x] 2016/03/31・see()高速化。(thx. tさん) (+R5)
 - [x] 2016/03/31・mate1ply修正。(thx. woodyringさん) (+R15)

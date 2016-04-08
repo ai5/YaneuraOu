@@ -12,9 +12,7 @@ Param1 パラメータ自動調整用X軸
 Param2 パラメータ自動調整用Y軸
 
 MinimumThinkingTime 最小思考時間[ms]
-SmartPvOutput コンソールへの出力を減らす
 MaxMovesToDraw 引き分けまでの手数(0なら無制限)
-SlowMover 序盤重視[%]40～150ぐらいの間で
 
 EnteringKingRule 入玉ルール
 # このコンボボックスの値
