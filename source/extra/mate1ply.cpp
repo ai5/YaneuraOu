@@ -144,7 +144,7 @@ Move Position::mate1ply_impl() const
   // 駒打ちで詰む条件を満たしていない。
   if (!hk) goto MOVE_MATE;
 
-  auto themKingWW = to_sqww(themKing);
+//  auto themKingWW = to_sqww(themKing);
 
   // 一番詰みそうな金から調べていく
   CHECK_PIECE(GOLD);

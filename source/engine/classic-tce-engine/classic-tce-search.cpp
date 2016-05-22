@@ -2169,10 +2169,10 @@ void MainThread::think()
   //    通常の思考処理
   // ---------------------
 
-  // root nodeにおける自分の手番
-  auto us = rootPos.side_to_move();
 
   {
+    // root nodeにおける自分の手番
+    auto us = rootPos.side_to_move();
     StateInfo si;
     auto& pos = rootPos;
 

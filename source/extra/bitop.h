@@ -83,13 +83,29 @@ const bool use_sse42 = true;
 
 // for SSE4.2
 #include <intrin.h>
-#define POPCNT8(a) __popcnt8(a)
-#ifdef IS_64BIT
-#define POPCNT32(a) __popcnt32(a)
-#define POPCNT64(a) __popcnt64(a)
+
+#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
+ #define POPCNT8(a) __popcnt8(a)
 #else
+ #define POPCNT8(a) __buildin_popcnt(a)
+#endif
+
+#ifdef IS_64BIT
+#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
+ #define POPCNT32(a) __popcnt32(a)
+ #define POPCNT64(a) __popcnt64(a)
+#else
+ #define POPCNT32(a) __builtin_popcount(a)
+ #define POPCNT64(a) __builtin_popcountll(a)
+#endif
+#else
+
+#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 // 32bit版だと、何故かこれ関数名に"32"がついてない。
-#define POPCNT32(a) __popcnt(uint32_t(a))
+ #define POPCNT32(a) __popcnt(uint32_t(a))
+#else
+ #define POPCNT32(a) __builtin_popcount(a)
+#endif
 // 32bit環境では32bitのpop_count 2回でemulation。
 #define POPCNT64(a) (POPCNT32((a)>>32) + POPCNT32(a))
 #endif
@@ -127,6 +143,8 @@ inline int32_t POPCNT64(uint64_t a) {
 // ----------------------------
 
 #ifdef IS_64BIT
+
+#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 // 1である最下位のbitのbit位置を得る。0を渡してはならない。
 inline int LSB32(uint32_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanForward(&index, v); return index; }
 inline int LSB64(uint64_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanForward64(&index, v); return index; }
@@ -135,11 +153,21 @@ inline int LSB64(uint64_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScan
 inline int MSB32(uint32_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanReverse(&index, v); return index; }
 inline int MSB64(uint64_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanReverse64(&index, v); return index; }
 #else
+// 1である最下位のbitのbit位置を得る。0を渡してはならない。
+inline int LSB32(uint32_t v) { ASSERT_LV3(v != 0); return __builtin_ctz(v); }
+inline int LSB64(uint64_t v) { ASSERT_LV3(v != 0); return __builtin_ctzll(v); }
+
+// 1である最上位のbitのbit位置を得る。0を渡してはならない。
+inline int MSB32(uint32_t v) { ASSERT_LV3(v != 0); return 31 - __builtin_clz(v); }
+inline int MSB64(uint64_t v) { ASSERT_LV3(v != 0); return 63 - __builtin_clzll(v); }
+#endif
+
+#else
 // 32bit環境では64bit版を要求されたら2回に分けて実行。
-inline int LSB32(uint32_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanForward(&index, v); return index; }
+inline int LSB32(uint32_t v) { ASSERT_LV3(v != 0); return __builtin_ctz(v); }
 inline int LSB64(uint64_t v) { ASSERT_LV3(v != 0); return uint32_t(v) ? LSB32(uint32_t(v)) : 32 + LSB32(uint32_t(v >> 32)); }
 
-inline int MSB32(uint32_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanReverse(&index, v); return index; }
+inline int MSB32(uint32_t v) { ASSERT_LV3(v != 0); return 31 - __builtin_clz(v); }
 inline int MSB64(uint64_t v) { ASSERT_LV3(v != 0); return uint32_t(v >> 32) ? 32 + MSB32(uint32_t(v >> 32)) : MSB32(uint32_t(v)); }
 #endif
 

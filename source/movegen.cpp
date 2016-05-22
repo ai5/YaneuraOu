@@ -233,85 +233,6 @@ template <MOVE_GEN_TYPE GenType, Color Us, bool All> struct GeneratePieceMoves<G
   }
 };
 
-// 手番側が王手がかかっているときに、王手を回避する手を生成する。
-template<Color US, bool All>
-  ExtMove* generate_evasions(const Position& pos, ExtMove* mlist)
-  {
-    // この実装において引数のtargetは無視する。
-
-    // この関数を呼び出しているということは、王手がかかっているはずであり、
-    // 王手をしている駒があるばすだから、checkers(王手をしている駒)が存在しなければおかしいのでassertを入れてある
-    ASSERT_LV2(pos.in_check());
-
-    // 自玉に王手をかけている敵の駒の利き(そこには玉は移動できないので)
-    Bitboard sliderAttacks = ZERO_BB;
-
-    // 王手している駒
-    Bitboard checkers = pos.checkers();
-
-    // 王手をしている駒の数を数えるカウンター
-    int checkersCnt = 0;
-
-    // 自玉を移動させるので、この玉はないものとして利きを求める必要がある。
-    Square ksq = pos.king_square(US);
-    Bitboard occ = pos.pieces() ^ Bitboard(ksq);
-
-    // 王手している駒のある升
-    Square checksq;
-
-    // 王手している駒は必ず1つ以上あるのでdo～whileで回る
-    do
-    {
-      // 王手をしている敵の駒のカウントを加算
-      ++checkersCnt;
-
-      // 王手をしている敵の駒の位置を取り出す
-      checksq = checkers.pop();
-
-      // この駒は敵駒でなくてはならない
-      ASSERT_LV3(color_of(pos.piece_on(checksq)) == ~US);
-
-      // 王手している駒の利きを加えていく。
-      sliderAttacks |= effects_from(pos.piece_on(checksq), checksq, occ);
-
-    } while (checkers);
-
-    // 王手回避のための玉の移動先は、玉の利きで、自駒のない場所でかつさきほどの王手していた駒が利いていないところが候補として挙げられる
-    // これがまだ自殺手である可能性もあるが、それはis_legal()でチェックすればいいと思う。
-
-    Bitboard bb = kingEffect(ksq) & ~pos.pieces(US) & ~sliderAttacks;
-    while (bb) { Square to = bb.pop(); mlist++->move = make_move(ksq, to); }
-
-    // 両王手であるなら、王の移動のみが回避手となる。ゆえにこれで指し手生成は終了。
-    if (checkersCnt > 1)
-      return mlist; 
-
-    // 両王手でないことは確定した
-
-    // このあと生成すべきは
-    // 1) 王手している駒を王以外で取る指し手
-    // 2) 王手している駒と王の間に駒を移動させる指し手(移動合い)
-    // 3) 王手している駒との間に駒を打つ指し手(合駒打ち)
-
-    // target1 == 王手している駒と王との間の升 == 3)の駒打ちの場所
-    // target2 == 移動による指し手は1)+2) = 王手している駒と王との間の升 + 王手している駒　の升
-
-    const Bitboard target1 = between_bb(checksq, ksq);
-    const Bitboard target2 = target1 | checksq;
-    
-    // あとはNON_EVASIONS扱いで普通に指し手生成。
-    mlist = GeneratePieceMoves<NON_EVASIONS, PAWN, US, All>()(pos, mlist, target2);
-    mlist = GeneratePieceMoves<NON_EVASIONS, LANCE, US, All>()(pos, mlist, target2);
-    mlist = GeneratePieceMoves<NON_EVASIONS, KNIGHT, US, All>()(pos, mlist, target2);
-    mlist = GeneratePieceMoves<NON_EVASIONS, SILVER, US, All>()(pos, mlist, target2);
-    mlist = GeneratePieceMoves<NON_EVASIONS, GPM_BR, US, All>()(pos, mlist, target2);
-    mlist = GeneratePieceMoves<NON_EVASIONS, GPM_GHD, US, All>()(pos, mlist, target2); // 玉は除かないといけない
-    mlist = GenerateDropMoves<US>()(pos, mlist, target1);
-
-    return mlist;
-}
-
-
 // ----------------------------------
 //      駒打ちによる指し手
 // ----------------------------------
@@ -457,6 +378,86 @@ template <Color Us> struct GenerateDropMoves {
     return mlist;
   }
 };
+
+// 手番側が王手がかかっているときに、王手を回避する手を生成する。
+template<Color US, bool All>
+  ExtMove* generate_evasions(const Position& pos, ExtMove* mlist)
+  {
+    // この実装において引数のtargetは無視する。
+
+    // この関数を呼び出しているということは、王手がかかっているはずであり、
+    // 王手をしている駒があるばすだから、checkers(王手をしている駒)が存在しなければおかしいのでassertを入れてある
+    ASSERT_LV2(pos.in_check());
+
+    // 自玉に王手をかけている敵の駒の利き(そこには玉は移動できないので)
+    Bitboard sliderAttacks = ZERO_BB;
+
+    // 王手している駒
+    Bitboard checkers = pos.checkers();
+
+    // 王手をしている駒の数を数えるカウンター
+    int checkersCnt = 0;
+
+    // 自玉を移動させるので、この玉はないものとして利きを求める必要がある。
+    Square ksq = pos.king_square(US);
+    Bitboard occ = pos.pieces() ^ Bitboard(ksq);
+
+    // 王手している駒のある升
+    Square checksq;
+
+    // 王手している駒は必ず1つ以上あるのでdo～whileで回る
+    do
+    {
+      // 王手をしている敵の駒のカウントを加算
+      ++checkersCnt;
+
+      // 王手をしている敵の駒の位置を取り出す
+      checksq = checkers.pop();
+
+      // この駒は敵駒でなくてはならない
+      ASSERT_LV3(color_of(pos.piece_on(checksq)) == ~US);
+
+      // 王手している駒の利きを加えていく。
+      sliderAttacks |= effects_from(pos.piece_on(checksq), checksq, occ);
+
+    } while (checkers);
+
+    // 王手回避のための玉の移動先は、玉の利きで、自駒のない場所でかつさきほどの王手していた駒が利いていないところが候補として挙げられる
+    // これがまだ自殺手である可能性もあるが、それはis_legal()でチェックすればいいと思う。
+
+    Bitboard bb = kingEffect(ksq) & ~pos.pieces(US) & ~sliderAttacks;
+    while (bb) { Square to = bb.pop(); mlist++->move = make_move(ksq, to); }
+
+    // 両王手であるなら、王の移動のみが回避手となる。ゆえにこれで指し手生成は終了。
+    if (checkersCnt > 1)
+      return mlist; 
+
+    // 両王手でないことは確定した
+
+    // このあと生成すべきは
+    // 1) 王手している駒を王以外で取る指し手
+    // 2) 王手している駒と王の間に駒を移動させる指し手(移動合い)
+    // 3) 王手している駒との間に駒を打つ指し手(合駒打ち)
+
+    // target1 == 王手している駒と王との間の升 == 3)の駒打ちの場所
+    // target2 == 移動による指し手は1)+2) = 王手している駒と王との間の升 + 王手している駒　の升
+
+    const Bitboard target1 = between_bb(checksq, ksq);
+    const Bitboard target2 = target1 | checksq;
+    
+    // あとはNON_EVASIONS扱いで普通に指し手生成。
+    mlist = GeneratePieceMoves<NON_EVASIONS, PAWN, US, All>()(pos, mlist, target2);
+    mlist = GeneratePieceMoves<NON_EVASIONS, LANCE, US, All>()(pos, mlist, target2);
+    mlist = GeneratePieceMoves<NON_EVASIONS, KNIGHT, US, All>()(pos, mlist, target2);
+    mlist = GeneratePieceMoves<NON_EVASIONS, SILVER, US, All>()(pos, mlist, target2);
+    mlist = GeneratePieceMoves<NON_EVASIONS, GPM_BR, US, All>()(pos, mlist, target2);
+    mlist = GeneratePieceMoves<NON_EVASIONS, GPM_GHD, US, All>()(pos, mlist, target2); // 玉は除かないといけない
+    mlist = GenerateDropMoves<US>()(pos, mlist, target1);
+
+    return mlist;
+}
+
+
 
 // ----------------------------------
 //      指し手生成器本体

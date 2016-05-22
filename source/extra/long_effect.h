@@ -6,6 +6,8 @@
 
 #include "../shogi.h"
 
+#include <cstring>  // memset
+
 #ifdef LONG_EFFECT_LIBRARY
 
 struct Bitboard;

@@ -219,7 +219,7 @@ namespace Eval
       }
     }
 #endif
-
+   {
     // 遡るのは一つだけ
     // ひとつずつ遡りながらsumKPPがVALUE_NONEでないところまで探してそこからの差分を計算することは出来るが
     // レアケースだし、StateInfoにEvalListを持たせる必要が出てきて、あまり得しない。
@@ -442,7 +442,7 @@ namespace Eval
     now->sumKKP = sumKKP;
     now->sumBKPP = sumBKPP;
     now->sumWKPP = sumWKPP;
-
+   }
 #ifdef USE_EHASH
     // せっかく計算したのでehashに保存しておく。
     {
