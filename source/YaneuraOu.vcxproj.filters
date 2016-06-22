@@ -59,6 +59,9 @@
     <Filter Include="リソース ファイル\engine\2016-mid-engine">
       <UniqueIdentifier>{307735dd-d642-4bb7-a1c0-4b578152201a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="doc\old">
+      <UniqueIdentifier>{aefbe5b2-c4db-408d-b69f-3084701e0753}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="evaluate.h">
@@ -121,6 +124,15 @@
     <ClInclude Include="engine\2016-mid-engine\parameters.h">
       <Filter>リソース ファイル\engine\2016-mid-engine</Filter>
     </ClInclude>
+    <ClInclude Include="extra\move_picker_2016Q2.h">
+      <Filter>リソース ファイル\extra</Filter>
+    </ClInclude>
+    <ClInclude Include="extra\move_picker_2015.h">
+      <Filter>リソース ファイル\extra</Filter>
+    </ClInclude>
+    <ClInclude Include="eval\kppt_evalsum.h">
+      <Filter>リソース ファイル\eval</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="movegen.cpp">
@@ -145,9 +157,6 @@
       <Filter>リソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="extra\test_cmd.cpp">
-      <Filter>リソース ファイル\extra</Filter>
-    </ClCompile>
-    <ClCompile Include="extra\mate1ply.cpp">
       <Filter>リソース ファイル\extra</Filter>
     </ClCompile>
     <ClCompile Include="extra\long_effect.cpp">
@@ -216,6 +225,18 @@
     <ClCompile Include="engine\2016-mid-engine\2016-mid-search.cpp">
       <Filter>リソース ファイル\engine\2016-mid-engine</Filter>
     </ClCompile>
+    <ClCompile Include="eval\evaluate_kppt.cpp">
+      <Filter>リソース ファイル\eval</Filter>
+    </ClCompile>
+    <ClCompile Include="extra\move_picker_2016Q2.cpp">
+      <Filter>リソース ファイル\extra</Filter>
+    </ClCompile>
+    <ClCompile Include="extra\mate1ply_with_effect.cpp">
+      <Filter>リソース ファイル\extra</Filter>
+    </ClCompile>
+    <ClCompile Include="extra\mate1ply_without_effect.cpp">
+      <Filter>リソース ファイル\extra</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\docs\USI拡張コマンド.txt">
@@ -260,6 +281,21 @@
     <Text Include="..\exe\YaneuraOu-classic-tce-readme.txt">
       <Filter>exe</Filter>
     </Text>
+    <Text Include="..\docs\実験記録.txt">
+      <Filter>doc</Filter>
+    </Text>
+    <Text Include="..\docs\old\更新履歴2016Q2まで.txt">
+      <Filter>doc\old</Filter>
+    </Text>
+    <Text Include="..\docs\ToDoのリスト.txt">
+      <Filter>doc</Filter>
+    </Text>
+    <Text Include="..\exe\YaneuraOu-2016-mid.txt">
+      <Filter>exe</Filter>
+    </Text>
+    <Text Include="..\exe\YaneuraOu-2016-mid_ja.txt">
+      <Filter>exe</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md">
@@ -281,6 +317,30 @@
       <Filter>exe</Filter>
     </None>
     <None Include="..\exe\YaneuraOu-classic-tce.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-local-server.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="Makefile">
+      <Filter>doc</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-mid.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-Mid_gcc.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-mid-nosse.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-mid-sse2.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-mid-sse4.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-mid-sse42.exe">
       <Filter>exe</Filter>
     </None>
   </ItemGroup>

@@ -3,6 +3,11 @@
 
 #include "shogi.h"
 
+// 手番込みの評価関数であれば手番を込みで値を計算するhelper classを使う。
+#ifdef EVAL_KPPT
+#include "eval\kppt_evalsum.h"
+#endif
+
 // --------------------
 //    評価関数
 // --------------------
@@ -21,6 +26,12 @@ namespace Eval {
   // 評価関数本体
   Value evaluate(const Position& pos);
 
+  // 評価関数本体
+  // このあとのdo_move()のあとのevaluate()で差分計算ができるように、
+  // 現在の前局面から差分計算ができるときだけ計算しておく。
+  // 評価値自体は返さない。
+  void evaluate_with_no_return(const Position& pos);
+
   // 駒割り以外の全計算して、その合計を返す。Position::set()で一度だけ呼び出される。
   // あるいは差分計算が不可能なときに呼び出される。
   Value compute_eval(const Position& pos);
@@ -34,6 +45,8 @@ namespace Eval {
   enum { PawnValue = 86 };
 
 #else
+
+#if defined (EVAL_PP) || defined(EVAL_KPP)
   // Bona6の駒割りを初期値に。それぞれの駒の価値。
   enum {
     PawnValue = 86,
@@ -51,6 +64,30 @@ namespace Eval {
     DragonValue = 942,
     KingValue = 15000,
   };
+#elif defined (EVAL_KPPT)
+
+  // null move後のevaluate()
+  // 手番を反転させたときの評価値を返す。
+  Value evaluate_nullmove(const Position& pos);
+
+  // Aperyの駒割り
+  enum {
+    PawnValue = 90,
+    LanceValue = 315,
+    KnightValue = 405,
+    SilverValue = 495,
+    GoldValue = 540,
+    BishopValue = 855,
+    RookValue = 990,
+    ProPawnValue = 540,
+    ProLanceValue = 540,
+    ProKnightValue = 540,
+    ProSilverValue = 540,
+    HorseValue = 945,
+    DragonValue = 1395,
+    KingValue = 15000,
+  };
+#endif
 
   // 駒の価値のテーブル(後手の駒は負の値)
   extern int PieceValue[PIECE_NB];
@@ -58,10 +95,11 @@ namespace Eval {
   // 駒の交換値(＝捕獲したときの価値の上昇値)
   // 例)「と」を取ったとき、評価値の変動量は手駒歩+盤面の「と」。
   // MovePickerとSEEの計算で用いる。
-  extern int PieceValueCapture[PIECE_NB];
+  extern int CapturePieceValue[PIECE_NB];
 
   // 駒を成ったときの成る前との価値の差。SEEで用いる。
   // 駒の成ったものと成っていないものとの価値の差
+  // ※　PAWNでもPRO_PAWNでも　と金 - 歩 の価値が返る。
   extern int ProDiffPieceValue[PIECE_NB];
 
   // --- 評価関数で使う定数 KPP(玉と任意2駒)のPに相当するenum
@@ -75,6 +113,9 @@ namespace Eval {
     BONA_PIECE_ZERO = 0, // 無効な駒。駒落ちのときなどは、不要な駒をここに移動させる。
 
     // --- 手駒
+
+#if defined (EVAL_PP) || defined(EVAL_KPP)
+
     f_hand_pawn = BONA_PIECE_ZERO + 1,
     e_hand_pawn = f_hand_pawn + 18,
     f_hand_lance = e_hand_pawn + 18,
@@ -91,7 +132,29 @@ namespace Eval {
     e_hand_rook = f_hand_rook + 2,
     fe_hand_end = e_hand_rook + 2,
 
-    // Bonanzaのように番号を詰めない。
+#elif defined (EVAL_KPPT)
+    // Apery(WCSC26)方式。0枚目の駒があるので少し隙間がある。
+    // 定数自体は1枚目の駒のindexなので、KPPの時と同様の処理で問題ない。
+
+    f_hand_pawn = BONA_PIECE_ZERO + 1,//0//0+1
+    e_hand_pawn = 20,//f_hand_pawn + 19,//19+1
+    f_hand_lance = 39,//e_hand_pawn + 19,//38+1
+    e_hand_lance = 44,//f_hand_lance + 5,//43+1
+    f_hand_knight = 49,//e_hand_lance + 5,//48+1
+    e_hand_knight = 54,//f_hand_knight + 5,//53+1
+    f_hand_silver = 59,//e_hand_knight + 5,//58+1
+    e_hand_silver = 64,//f_hand_silver + 5,//63+1
+    f_hand_gold = 69,//e_hand_silver + 5,//68+1
+    e_hand_gold = 74,//f_hand_gold + 5,//73+1
+    f_hand_bishop = 79,//e_hand_gold + 5,//78+1
+    e_hand_bishop = 82,//f_hand_bishop + 3,//81+1
+    f_hand_rook = 85,//e_hand_bishop + 3,//84+1
+    e_hand_rook = 88,//f_hand_rook + 3,//87+1
+    fe_hand_end = 90,//e_hand_rook + 3,//90
+
+#endif                     
+
+    // Bonanzaのように盤上のありえない升の歩や香の番号を詰めない。
     // 理由1) 学習のときに相対PPで1段目に香がいるときがあって、それが逆変換において正しく表示するのが難しい。
     // 理由2) 縦型BitboardだとSquareからの変換に困る。
 
@@ -186,7 +249,8 @@ namespace Eval {
         p = BONA_PIECE_ZERO;
       for (auto& p : pieceListFw)
         p = BONA_PIECE_ZERO;
-      memset(piece_no_list, -1, sizeof(PieceNo));
+      for (auto& v : piece_no_list)
+        v = PieceNo(-1);
     }
 
   protected:
