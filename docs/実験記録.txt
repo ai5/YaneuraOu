@@ -1,4 +1,108 @@
 ﻿
+
+■　2016/06/23
+
+] V3.18
+
+・mate間違う局面を見つけた。
+
+	position startpos moves 7g7f 3c3d 6g6f 8c8d 7i6h 7a6b 5g5f 5c5d 3i4h 3a4b 4i5h 4a3b 5h6g 5a4a 6i7h 7c7d 6h7g 6b5c 2g2f 5d5e 5f5e 2b5e 2f2e 5c5d 5i6i 4b3c 4h5g 8b5b 6f6e 5d6e 5g6f 6e6f 7g6f 5e8b P*5e 4a3a S*8c 8b7a 8c7d+ 6a7b 6i7i 3a2b 8h7g 7b7c 7d7c 8a7c 7g6h 7c8e 8g8f P*7g 8i7g 8e7g+ 6h7g 7a3e G*4f 3e7a N*4e 3c4d 5e5d 5b5d 6f5e 5d7d 5e4d 4c4d S*6e 7d7b P*6b 7a6b 6e5d P*7e P*5c S*4c 5d4c 3b4c S*6a 7b7a 6a5b 4c5d 5b6c 7e7f 6g7f 7a7f 6c5d+ N*6f 2e2d 2c2d 7g6f 7f6f 5d4d B*5g P*6h P*6g 2h2d P*2c G*3c 2b3a N*4c 3a4a 3c3b 4a3b 2d3d
+
+	静止探索絡みだな、これ。
+	evasionですべての指し手を生成していない可能性とかも…。
+
+	setoption name Threads value 1
+	position startpos moves 7g7f 3c3d 6g6f 8c8d 7i6h 7a6b 5g5f 5c5d 3i4h 3a4b 4i5h 4a3b 5h6g 5a4a 6i7h 7c7d 6h7g 6b5c 2g2f 5d5e 5f5e 2b5e 2f2e 5c5d 5i6i 4b3c 4h5g 8b5b 6f6e 5d6e 5g6f 6e6f 7g6f 5e8b P*5e 4a3a S*8c 8b7a 8c7d+ 6a7b 6i7i 3a2b 8h7g 7b7c 7d7c 8a7c 7g6h 7c8e 8g8f P*7g 8i7g 8e7g+ 6h7g 7a3e G*4f 3e7a N*4e 3c4d 5e5d 5b5d 6f5e 5d7d 5e4d 4c4d S*6e 7d7b P*6b 7a6b 6e5d P*7e P*5c S*4c 5d4c 3b4c S*6a 7b7a 6a5b 4c5d 5b6c 7e7f 6g7f 7a7f 6c5d+ N*6f 2e2d 2c2d 7g6f 7f6f 5d4d B*5g P*6h P*6g 2h2d P*2c G*3c 2b3a N*4c 3a4a 3c3b 4a3b 2d3d
+	go infinite
+
+	利きを使わない1手詰め判定、バグがあった。とほほ。
+
+	敵の合駒が歩以外にないという条件を間違えて自駒が歩以外ないという条件になっていた。とほほ。
+	-  if (hand_count(ourHand , PAWN) == (int)ourHand)
+
+		秒読み300[ms]
+
+		48.4%	
+		#231
+		やねうら王2016mid V318
+		mate1ply()バグ修正。
+		#228
+		やねうら王2016mid V317
+		基準。
+
+		266-7-284(79.1% R-11.4)	
+
+	バグ取ったのに弱くなった気がする。
+	razor margin変えたのとcheck_info_update()のタイミングが早くなったからか…。つらい..。
+
+		秒読み300[ms]
+
+		51.2%	
+		#231
+		やねうら王2016mid V318
+		mate1ply()バグ修正。
+		#228
+		やねうら王2016mid V317
+		基準。
+
+		262-4-250(28.3% R8.1)	
+
+	まあいいや、ほぼ互角ということで。
+
+	V3.18a
+	mate1ply()、ランダムプレイヤーでテストする。
+
+	歩の移動による不成の王手による詰み、間違えてた。
+		-    to = sq_king + (us == BLACK ? SQ_U : SQ_D);
+		+    to = sq_king + (us == BLACK ? SQ_D : SQ_U);
+
+	歩の移動による成りの王手による詰み、間違えてた。
+
+		mate found = 10000 , mate miss = 89 , mate found rate  = 99.1179%
+		mate found = 20000 , mate miss = 154 , mate found rate  = 99.2359%
+		mate found = 30000 , mate miss = 235 , mate found rate  = 99.2228%
+		mate found = 40000 , mate miss = 322 , mate found rate  = 99.2014%
+		mate found = 50000 , mate miss = 438 , mate found rate  = 99.1316%
+		mate found = 60000 , mate miss = 536 , mate found rate  = 99.1146%
+		mate found = 70000 , mate miss = 632 , mate found rate  = 99.1052%
+		mate found = 80000 , mate miss = 746 , mate found rate  = 99.0761%
+		mate found = 90000 , mate miss = 854 , mate found rate  = 99.06%
+		mate found = 100000 , mate miss = 940 , mate found rate  = 99.0688%
+
+	いっぱい引っかかってワロタ。
+	mate foundは99%付近か。利きによる詰みmate1ply()は93%ちょいだったのでかなりいいみたい…。
+
+	こんな重大なバグ修正したのに0.3秒では差がほとんどつかない…。不思議なものだ。
+
+		秒読み300[ms]
+
+		50.5%	
+		#232
+		やねうら王2016mid V318a
+		mate1ply()バグ修正。
+		#230
+		やねうら王2016mid V317b
+		razoring改善。
+
+		196-2-192(40.0% R3.6)	
+
+
+		秒読み3000[ms]
+
+		53.8%	
+		#232
+		やねうら王2016mid V318a
+		mate1ply()バグ修正。
+		#230
+		やねうら王2016mid V317b
+		razoring改善。
+
+		98-5-84(13.3% R26.8)	
+	
+	長い時間になるにつれて、探索node数が増えるのでmate1ply()で間違う局面が増えるから、
+	それによる負けが増える…はず。つまり長い時間においてはこれが差がつく一因であった…はず。
+
+
 ■　2016/06/22
 
 ] V3.17
@@ -6,6 +110,49 @@
 ・razoring margin 0.1秒で12時間ほどチューンして、そのあと秒数を広げながらチューンしなおして、
 　最終的に強くなったかどうかを長い持ち時間で検証する。
 
+	V3.17a
+
+	・王手延長の単純化	
+		-          || ( !moveCountPruning && pos.see_sign(move) >= VALUE_ZERO)))
+		+          ||  pos.see_sign(move) >= VALUE_ZERO)))
+
+	・IIDのとき、常にcut nodeにするのではなく、そのnodeのcutNodeを伝播させる
+		-  search<NT>(pos, ss, alpha, beta, d, true);
+		+  search<NT>(pos, ss, alpha, beta, d, cutNode);
+
+			秒読み1000[ms]
+
+			50.3%	
+			#229
+			やねうら王2016mid V317a
+			simplify check extension
+			#228
+			やねうら王2016mid V317
+			基準。
+
+			332-13-328(42.3% R2.1)	
+
+		ほぼ変わらない。簡単に計測できる量ではない。
+
+	V3.17b
+	PARAM_RAZORING_MARGIN4 : 570 → 586(53.33%) : ←←(値554,勝率49.96%,1872局,有意51.14%) ,←(値562,勝率49.35%,1872局,有意67.61%) ,→(値578,勝率50.77%,1872局,有意29.44%) ,→→(値586,勝率53.33%,1872局,有意0.97%) ,
+	PARAM_RAZORING_MARGIN3 : 619 → 619(50.00%) : ←←(値603,勝率49.84%,1872局,有意54.54%) ,←(値611,勝率49.15%,1872局,有意72.51%) ,→(値627,勝率49.63%,1872局,有意60.14%) ,→→(値635,勝率49.23%,1872局,有意70.56%) ,
+	PARAM_RAZORING_MARGIN2 : 578 → 578(50.00%) : ←←(値562,勝率49.39%,1872局,有意66.52%) ,←(値570,勝率50.65%,1872局,有意32.43%) ,→(値586,勝率49.76%,1872局,有意56.78%) ,→→(値594,勝率50.20%,1872局,有意44.35%) ,
+	PARAM_RAZORING_MARGIN1 : 483 → 483(50.00%) : ←←(値467,勝率48.48%,3744局,有意90.41%) ,←(値475,勝率47.33%,1872局,有意96.98%) ,→(値491,勝率49.39%,1872局,有意66.54%) ,→→(値499,勝率50.61%,1872局,有意33.45%) ,
+
+			秒読み1000[ms]
+
+			51.4%	
+			#230
+			やねうら王2016mid V317b
+			razoring改善。
+			#228
+			やねうら王2016mid V317
+			基準。
+
+			323-10-306(23.6% R9.4)	
+	
+	弱くはなっていなさそうなので良しとする。
 
 
 ] V3.16

@@ -504,7 +504,8 @@ namespace YaneuraOu2016Mid
     //     eval呼び出し
     // -----------------------
 
-//    pos.check_info_update();
+    // 1手詰めで必要なのでこのタイミングで更新しておく。
+    pos.check_info_update();
 
     if (InCheck)
     {
@@ -521,8 +522,6 @@ namespace YaneuraOu2016Mid
       // -----------------------
       //      一手詰め判定
       // -----------------------
-
-      // 王手がかかっていないとき、このタイミングで1手詰め判定を呼び出す
 
 #ifdef USE_MATE_1PLY_IN_QSEARCH
 
@@ -586,10 +585,6 @@ namespace YaneuraOu2016Mid
     // -----------------------
     //     1手ずつ調べる
     // -----------------------
-
-    // 利きを用いるmate1ply()は、呼び出し前にpinを更新する必要があるが、
-    // 利きを用いないmate1ply()なら、このタイミングで呼び出しておけば十分。
-    pos.check_info_update();
 
     // 取り合いの指し手だけ生成する
     // searchから呼び出された場合、直前の指し手がMOVE_NULLであることがありうるが、
@@ -656,6 +651,12 @@ namespace YaneuraOu2016Mid
 
       // 駒を取らない王手回避の指し手はよろしくない可能性が高いのでこれは枝刈りしてしまう。
       // 成りでない && seeが負の指し手はNG。王手回避でなくとも、同様。
+
+      // ただし、王手されている局面の場合、王手の回避手を1つ以上見つけているときでないと
+      // これを枝刈りしてしまうと回避手がないかのように錯覚してしまうので、
+      // bestValue > VALUE_MATED_IN_MAX_PLY
+      // (実際は-VALUE_INFINITEより大きければ良い)
+      // という条件を追加してある。
 
       bool evasionPrunable = InCheck
         &&  bestValue > VALUE_MATED_IN_MAX_PLY
@@ -964,7 +965,8 @@ namespace YaneuraOu2016Mid
     Move bestMove = MOVE_NONE;
     const bool InCheck = pos.checkers();
 
-    CheckInfoUpdate ciu = CHECK_INFO_UPDATE_NONE;
+    // mate1ply()で必要なのでこのタイミングで更新しておく。
+    pos.check_info_update();
 
 #ifdef USE_MATE_1PLY_IN_SEARCH
 
@@ -974,11 +976,6 @@ namespace YaneuraOu2016Mid
     // 見つけたときのリターン(見返り)が少ない。
     if (!RootNode && !ttHit && depth > ONE_PLY && !InCheck)
     {
-      // mate1ply()の呼び出しのためにCheckInfo.pinnedの更新が必要。
-//      pos.check_info_update_pinned();
-//      ciu = CHECK_INFO_UPDATE_PINNED; // pinnedのupdateだけ終わったとマークしておく。
-      // →　利きを使わないならこの初期化は不要
-
       move = pos.mate1ply();
       if (move != MOVE_NONE)
       {
@@ -1099,10 +1096,6 @@ namespace YaneuraOu2016Mid
       Depth R = ((PARAM_NULL_MOVE_DYNAMIC_ALPHA + PARAM_NULL_MOVE_DYNAMIC_BETA * depth) / 256
         + std::min((int)((eval - beta) / PawnValue), 3)) * ONE_PLY;
 
-      // このタイミングでcheck_infoをupdateしないと、null_moveのときにStateInfo(含むCheckInfo)をコピーされてしまい、まずい。
-      pos.check_info_update(ciu);
-      ciu = CHECK_INFO_UPDATE_ALL; // updateはすべて終わったとマークしておく。
-
       pos.do_null_move(st);
 
       (ss + 1)->skipEarlyPruning = true;
@@ -1156,10 +1149,6 @@ namespace YaneuraOu2016Mid
       ASSERT_LV3((ss - 1)->currentMove != MOVE_NONE);
       ASSERT_LV3((ss - 1)->currentMove != MOVE_NULL);
 
-      // CheckInfoのうち、残りのものをupdateしてやる。
-      pos.check_info_update(ciu);
-      ciu = CHECK_INFO_UPDATE_ALL; // updateはすべて終わったとマークしておく。
-
       // このnodeの指し手としては置換表の指し手を返したあとは、直前の指し手で捕獲された駒による評価値の上昇を
       // 上回るようなcaptureの指し手のみを生成する。
       MovePicker mp(pos, ttMove, (Value)Eval::CapturePieceValue[pos.captured_piece_type()]);
@@ -1192,7 +1181,7 @@ namespace YaneuraOu2016Mid
     {
       Depth d = depth - 2 * ONE_PLY - (PvNode ? DEPTH_ZERO : depth / 4);
       ss->skipEarlyPruning = true;
-      search<NT>(pos, ss, alpha, beta, d, true);
+      search<NT>(pos, ss, alpha, beta, d, cutNode);
       ss->skipEarlyPruning = false;
 
       tte = TT.probe(posKey, ttHit);
@@ -1246,10 +1235,6 @@ namespace YaneuraOu2016Mid
 
     // このnodeでdo_move()された合法手の数
     int moveCount = 0;
-
-
-    // CheckInfoのうち、残りのものをupdateしてやる。
-    pos.check_info_update(ciu);
 
     // このあとnodeを展開していくので、evaluate()の差分計算ができないと速度面で損をするから、
     // evaluate()を呼び出していないなら呼び出しておく。
@@ -1309,8 +1294,8 @@ namespace YaneuraOu2016Mid
       // また、置換表の指し手も延長対象。これはYSSの0.5手延長に似たもの。
       // ※　将棋においてはこれはやりすぎの可能性も..
       if (givesCheck
-        && (moveCount == 1
-          || ( !moveCountPruning && pos.see_sign(move) >= VALUE_ZERO)))
+        && moveCount == 1
+        && pos.see_sign(move) >= VALUE_ZERO)
         extension = ONE_PLY;
 
       //
@@ -1747,7 +1732,7 @@ void Search::init() {
     };
 
     fstream fs;
-    fs.open("param\\" PARAM_FILE, ios::in);
+    fs.open("param/" PARAM_FILE, ios::in);
     if (fs.fail())
     {
       cout << "info string Error! : can't read " PARAM_FILE << endl;
@@ -2238,11 +2223,13 @@ void MainThread::think()
     int book_ply = Options["BookMoves"];
     if (rootPos.game_ply() <= book_ply)
     {
-      auto it = book.find(rootPos.sfen());
+      auto it = book.find(rootPos);
       if (it != book.end() && it->second.size() != 0) {
         // 定跡にhitした。逆順で出力しないと将棋所だと逆順にならないという問題があるので逆順で出力する。
         // また、it->second->size()!=0をチェックしておかないと指し手のない定跡が登録されていたときに困る。
+
         const auto& move_list = it->second;
+
         if (!Limits.silent)
           for (auto it = move_list.rbegin(); it != move_list.rend(); it++)
             sync_cout << "info pv " << it->bestMove << " " << it->nextMove
@@ -2273,7 +2260,7 @@ void MainThread::think()
 
         // 不成の指し手がRootMovesに含まれていると正しく指せない。
         const auto& move = move_list[prng.rand(book_move_max)];
-        auto bestMove = move.bestMove;
+        auto bestMove = move.bestMove; 
         auto it_move = std::find(rootMoves.begin(), rootMoves.end(), bestMove);
         if (it_move != rootMoves.end())
         {

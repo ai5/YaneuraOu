@@ -568,6 +568,7 @@ namespace {
     while (bb)
     {
       Square escape = bb.pop();
+
       if (! pos.attackers_to(~us, escape,slide))
         return true;
       // 何も破壊していないので即座に返って良い。
@@ -692,14 +693,14 @@ namespace {
 
 }
 
-// 1手で積むならばその指し手を返す。なければMOVE_NONEを返す
+// 1手で詰むならばその指し手を返す。なければMOVE_NONEを返す
+// 前提条件) check_info_update()を事前に行なってあること。
 Move is_mate_in_1ply(const Position& pos /*, const CheckInfo& ci */)
 {
   ASSERT_LV3(! pos.checkers() );
 
-  // CheckInfoから取れるのだが、search関数のほうではCheckInfoを初期化する前に
-  // この値が知りたいので、仕方ない。二重初期化になってしまうが…まあ…。
-  Bitboard dcCandidates = pos.discovered_check_candidates();
+  // check_info_update()をやってあると仮定できるなら、直接取得できる。
+  Bitboard dcCandidates = pos.state()->checkInfo.dcCandidates; // pos.discovered_check_candidates();
 
   Color us = pos.side_to_move();
   Color them = ~us;
@@ -1124,10 +1125,10 @@ SILVER_DROP_END:;
 
   // 合い駒なしである可能性が高い
 
-  // 歩以外を持っていないか。
+  // 敵は歩以外を持っていないか。
   // これは、 歩の枚数 == hand であることと等価。(いまの手駒のbit layoutにおいて)
 
-  if (hand_count(ourHand , PAWN) == (int)ourHand)
+  if (hand_count(themHand , PAWN) == (int)themHand)
   {
     // 玉の8近傍の移動可能箇所の列挙
     Bitboard bb_king_movable = ~pos.pieces(them) & kingEffect(sq_king);
@@ -1541,9 +1542,10 @@ NEXT1:;
   // 歩の移動による詰み
   if (check_cand_bb(us, PIECE_TYPE_CHECK_PAWN_WITH_NO_PRO, sq_king) & pos.pieces(us, PAWN))
   {
-    to = sq_king + (us == BLACK ? SQ_U : SQ_D);
+    // 先手の歩による敵玉の王手だとすると、敵玉の一升下(SQ_D)が歩の移動先。
+    to = sq_king + (us == BLACK ? SQ_D : SQ_U);
     if (pos.piece_on(to) != NO_PIECE && color_of(pos.piece_on(to)) != ~us) { goto SKIP_PAWN; }
-    from = to + (us == BLACK ? SQ_U : SQ_D);
+    from = to + (us == BLACK ? SQ_D : SQ_U);
 
     // 敵陣であれば成りによる詰みチェックで引っかかるだろう。
     if (canPromote(us, to)) { goto SKIP_PAWN; }
@@ -1563,7 +1565,7 @@ SKIP_PAWN:;
   while (bb)
   {
     from = bb.pop();
-    to = from + (us == BLACK ? SQ_D : SQ_U);
+    to = from + (us == BLACK ? SQ_U : SQ_D);
     if (pos.piece_on(to) != NO_PIECE && color_of(pos.piece_on(to)) != ~us) { continue; }
     bb_attacks = goldEffect(us, to);
 
@@ -1604,7 +1606,7 @@ DC_CHECK:;
         if (file_of(from) == file_of(sq_king)) { continue; }
 
         // 移動性の保証
-        to = from + (us == BLACK ? SQ_D : SQ_U);
+        to = from + (us == BLACK ? SQ_U : SQ_D);
         if (pos.piece_on(to) != NO_PIECE && color_of(pos.piece_on(to)) != ~us) { continue; }
 
         // toの地点で成れないと駄目

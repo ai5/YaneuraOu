@@ -266,7 +266,7 @@ struct Position
 
   // 置換表から取り出したMoveを32bit化する。
   Move move16_to_move(Move m) const {
-    return Move(m +
+    return Move(u16(m) +
       (( is_drop(m) ? Piece(move_dropped_piece(m) + (sideToMove == WHITE ? PIECE_WHITE : NO_PIECE) + 32)
       : is_promote(m) ? Piece(piece_on(move_from(m)) + PIECE_PROMOTE) : piece_on(move_from(m))) << 16)
     );
@@ -521,8 +521,17 @@ struct Position
   // 現局面で1手詰めであるかを判定する。1手詰めであればその指し手を返す。
   // ただし1手詰めであれば確実に詰ませられるわけではなく、簡単に判定できそうな近接王手による
   // 1手詰めのみを判定する。(要するに判定に漏れがある。)
-  // 先行して、CheckInfo.pinnedを更新しておく必要がある。(LONG_EFFECT_LIBRARYを用いる場合)
+  // 
+  // 前提条件
+  // 1) LONG_EFFECT_LIBRARYを用いる場合、先行して、CheckInfo.pinnedを更新しておく必要がある。
   // →　check_info_update_pinned()を利用するのが吉。
+  // 2) LONG_EFFECT_LIBRARYを用いない場合、CheckInfo.dcCandidatesを更新しておく必要がある。
+  // →　素直にcheck_info_update()を呼び出すのが吉。
+  // 
+
+  // 返し値は、16bitのMove。このあとpseudo_legal()等を使いたいなら、
+  // pos.move16_to_move()を使って32bitのMoveに変換すること。
+
   Move mate1ply() const;
 
   // ↑の先後別のバージョン。(内部的に用いる)
