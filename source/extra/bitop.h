@@ -1,26 +1,46 @@
 ﻿#ifndef _BITOP_H_
 #define _BITOP_H_
 
+#include "../shogi.h"
+
 //
 //   bit operation library
 //
 
 // ターゲット環境でSSE,AVX,AVX2が搭載されていない場合はこれらの命令をsoftware emulationにより実行する。
-// software emulationなので多少遅いが、SSE,AVX,AVX2の使えない環境でそれに合わせたコードを書く労力が省ける。
+// software emulationなので多少遅いが、SSE2,SSE4.1,SSE4.2,AVX,AVX2,AVX-512の使えない環境でそれに合わせたコードを書く労力が省ける。
 
-// USE_SSE42   : SSE4.2以降で使える命令を使う
-//                 POPCNT /
-// USE_AVX2    : AVX2以降で使える命令を使う(Haswell以降からサポートされている)
-//                 PEXT   / MOVEMASK
+// ----------------------------
+//   include intrinsic header
+// ----------------------------
 
+#if defined(USE_AVX512)
+#include <zmmintrin.h>
+#elif defined(USE_AVX2)
+#include <immintrin.h>
+#elif defined(USE_SSE42)
+#include <nmmintrin.h>
+#elif defined(USE_SSE41)
+#include <smmintrin.h>
+#elif defined (USE_SSE2)
+#include <emmintrin.h>
+#else
+#if defined (__GNUC__) 
+#include <mm_malloc.h> // for _mm_alloc()
+#endif
+#endif
 
 // ----------------------------
 //      type define(uint)
 // ----------------------------
-typedef uint8_t u8;
+typedef  uint8_t  u8;
+typedef   int8_t  s8;
 typedef uint16_t u16;
+typedef  int16_t s16;
 typedef uint32_t u32;
+typedef  int32_t s32;
 typedef uint64_t u64;
+typedef  int64_t s64;
 
 // ----------------------------
 //      inline化の強制
@@ -41,9 +61,6 @@ typedef uint64_t u64;
 // ----------------------------
 
 #ifdef USE_AVX2
-
-// for SSE,AVX,AVX2
-#include <immintrin.h>
 
 // for AVX2 : hardwareによるpext実装
 #define PEXT32(a,b) _pext_u32(a,b)
@@ -169,7 +186,15 @@ FORCE_INLINE int MSB64(const u64 v) { ASSERT_LV3(v != 0); return 63 - __builtin_
 // Byteboardの直列化で使うAVX2命令
 struct alignas(32) ymm
 {
-  __m256i m;
+  union {
+    __m256i m;
+    u64 _u64[4];
+    u32 _u32[8];
+	// typedef名と同じ変数名にするとg++で警告が出るようだ。
+  };
+
+  ymm(const __m256i m_) : m(_mm256_loadu_si256((__m256i*)(&m_))) {}
+  ymm operator = (const __m256i &m_) { this->m = _mm256_loadu_si256((__m256i*)(&m_)); return *this; }
 
   // アライメント揃っていないところからの読み込みに対応させるためにloadではなくloaduのほうを用いる。
   ymm(const void* p) :m(_mm256_loadu_si256((__m256i*)p)) {}

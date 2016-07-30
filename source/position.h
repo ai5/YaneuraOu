@@ -137,7 +137,7 @@ struct StateInfo {
   int sumWKPP;
 #endif
 
-#ifdef EVAL_KPPT
+#if defined(EVAL_KPPT) || defined(EVAL_KPPT_FAST)
   // 評価値。(次の局面で評価値を差分計算するときに用いる)
   // まだ計算されていなければsum.p[2][0]の値はINT_MAX
   Eval::EvalSum sum;
@@ -161,7 +161,14 @@ struct StateInfo {
   HASH_KEY hand_key_;
 
   // 一つ前の局面に遡るためのポインタ。
-  // NULL MOVEなどでそこより遡って欲しくないときはnullptrを設定しておく。
+  // この値としてnullptrが設定されているケースは、
+  // 1) root node
+  // 2) 直前がnull move
+  // のみである。
+  // 評価関数を差分計算するときに、
+  // 1)は、compute_eval()を呼び出して差分計算しないからprevious==nullで問題ない。
+  // 2)は、このnodeのEvalSum sum(これはdo_move_null()でコピーされている)から
+  //   計算出来るから問題ない。
   StateInfo* previous;
 
 };
@@ -176,7 +183,15 @@ struct Position
   // --- ctor
 
   // コンストラクタではおまけとして平手の開始局面にする。
-  Position() { clear(); set_hirate(); }
+  Position() { clear(); 
+#ifndef USE_SHARED_MEMORY_IN_EVAL
+    // Positionのコンストラクタで平手に初期化すると、compute_eval()が呼び出され、このときに
+    // 評価関数テーブルを参照するが、isready()が呼び出されていないのでこの初期化が出来ない。
+    // ゆえに、この処理は本来ならやめたほうが良い。
+    // (特にisready()が呼び出されるまでcompute_eval()が呼び出せない状況においては。)
+    set_hirate();
+#endif
+  }
 
   // コピー。startStateもコピーして、外部のデータに依存しないように(detach)する。
   // 積極的に使うべきではない。探索開始時にslaveに局面をコピーするときに仕方なく使っているだけ。
@@ -206,6 +221,7 @@ struct Position
   Color side_to_move() const { return sideToMove; }
 
   // (将棋の)開始局面からの手数を返す。
+  // 平手の開始局面なら1が返る。(0ではない)
   int game_ply() const { return gamePly; }
 
   // この局面クラスを用いて探索しているスレッドを返す。 
@@ -238,28 +254,17 @@ struct Position
       : piece_on(move_from(m));
   }
 
-  // moved_piece_before()の移動後の駒が返る版。
-  Piece moved_piece_after(Move m) const {
-#ifdef    KEEP_PIECE_IN_GENERATE_MOVES
-    // 上位16bitにそのまま格納されているはず。
-    return Piece((m >> 16) & ~32); // DROP BITを飛ばす
-#else
-    return is_drop(m)
-      ? (move_dropped_piece(m) + (sideToMove == WHITE ? PIECE_WHITE : NO_PIECE))
-      : is_promote(m) ? Piece(piece_on(move_from(m)) + PIECE_PROMOTE) : piece_on(move_from(m));
-#endif
-  }
-
-  // moved_pieceの拡張版。駒打ちのときは、打ち駒(+32)を加算した駒種を返す。
+  // moved_pieceの拡張版。駒打ちのときは、打ち駒(+32 == PIECE_DROP)を加算した駒種を返す。
   // historyなどでUSE_DROPBIT_IN_STATSを有効にするときに用いる。
   // 成りの指し手のときは成りの指し手を返す。(移動後の駒)
-  Piece moved_piece_after_ex(Move m) const {
+  // KEEP_PIECE_IN_GENERATE_MOVESのときは単にmoveの上位16bitを返す。
+  Piece moved_piece_after(Move m) const {
 #ifdef    KEEP_PIECE_IN_GENERATE_MOVES
     // 上位16bitにそのまま格納されているはず。
     return Piece(m >> 16);
 #else
     return is_drop(m)
-      ? Piece(move_dropped_piece(m) + (sideToMove == WHITE ? PIECE_WHITE : NO_PIECE) + 32 )
+      ? Piece(move_dropped_piece(m) + (sideToMove == WHITE ? PIECE_WHITE : NO_PIECE) + PIECE_DROP)
       : is_promote(m) ? Piece(piece_on(move_from(m)) + PIECE_PROMOTE) : piece_on(move_from(m));
 #endif
   }
@@ -267,8 +272,8 @@ struct Position
   // 置換表から取り出したMoveを32bit化する。
   Move move16_to_move(Move m) const {
     return Move(u16(m) +
-      (( is_drop(m) ? Piece(move_dropped_piece(m) + (sideToMove == WHITE ? PIECE_WHITE : NO_PIECE) + 32)
-      : is_promote(m) ? Piece(piece_on(move_from(m)) + PIECE_PROMOTE) : piece_on(move_from(m))) << 16)
+      (( is_drop(m) ? Piece(move_dropped_piece(m) + (sideToMove == WHITE ? PIECE_WHITE : NO_PIECE) + PIECE_DROP)
+                    : is_promote(m) ? Piece(piece_on(move_from(m)) + PIECE_PROMOTE) : piece_on(move_from(m))) << 16)
     );
   }
 
@@ -442,7 +447,7 @@ struct Position
   const Eval::EvalList* eval_list() const { return &evalList; }
 #endif
 
-#ifdef  USE_SEE
+#if defined (USE_SEE) || defined (USE_SIMPLE_SEE)
   // 指し手mの(Static Exchange Evaluation : 静的取り合い評価)の値を返す。
   Value see(Move m) const;
 
@@ -511,7 +516,14 @@ struct Position
 
   // 捕獲する指し手か、歩の成りの指し手であるかを返す。
   bool capture_or_pawn_promotion(Move m) const
-  { return ((m & MOVE_PROMOTE) && type_of(piece_on(move_from(m)))==PAWN) || capture(m); }
+  {
+#ifdef KEEP_PIECE_IN_GENERATE_MOVES
+    // 移動させる駒が歩かどうかは、Moveの上位16bitを見れば良い
+    return (is_promote(m) && raw_type_of(moved_piece_after(m)) == PAWN) || capture(m);
+#else
+    return (is_promote(m) && type_of(piece_on(move_from(m)))==PAWN) || capture(m);
+#endif
+  }
 
   // 捕獲する指し手であるか。
   bool capture(Move m) const { return !is_drop(m) && piece_on(move_to(m)) != NO_PIECE; }
@@ -544,6 +556,30 @@ struct Position
   // 条件を満たしているとき、MOVE_WINや、玉を移動する指し手(トライルール時)が返る。さもなくば、MOVE_NONEが返る。
   // mate1ply()から内部的に呼び出す。(そうするとついでに処理出来て良い)
   Move DeclarationWin() const;
+#endif
+
+  // -- sfen化ヘルパ
+#ifdef USE_SFEN_PACKER
+  // packされたsfenを得る。引数に指定したバッファに返す。
+  // gamePlyはpackに含めない。
+  void sfen_pack(u8 data[32]);
+
+  // packされたsfenを解凍する。sfen文字列が返る。
+  // gamePly = 0となる。
+  static std::string sfen_unpack(u8 data[32]);
+
+  // ↑sfenを経由すると遅いので直接packされたsfenをセットする関数を作った。
+  // pos.set(sfen_unpack(data)); と等価。
+  void set_from_packed_sfen(u8 data[32]);
+
+  // 盤面と手駒、手番を与えて、そのsfenを返す。
+  static std::string sfen_from_rawdata(Piece board[81], Hand hands[2], Color turn, int gamePly);
+
+  // sq1,sq2の駒を入れ替える。(という指し手だと思うと良い)
+  // 棋譜生成のときなど特殊な用途に用いる。王手されている局面で呼び出してはならない。
+  // もし歩が1段目にあるなど、非合法局面に突入するなら2駒を入れ替えずにfalseを返す。
+  // ※　内部的に一端sfen()化するのだが、そのときにsfen_from_rawdata()を用いるのでsfen_packer.cppに依存。
+  bool do_move_by_swapping_pieces(Square sq1, Square sq2);
 #endif
 
   // -- 利き

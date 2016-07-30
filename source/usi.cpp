@@ -38,6 +38,19 @@ namespace Book { extern void makebook_cmd(Position& pos, istringstream& is); }
 #include "cooperate_mate/cooperative_mate_solver.h"
 #endif
 
+// 棋譜を自動生成するコマンド
+#ifdef EVAL_LEARN
+namespace Learner
+{
+  // 棋譜の自動生成。
+  void gen_sfen(Position& pos, istringstream& is);
+
+  // 生成した棋譜からの学習
+  void learn(Position& pos, istringstream& is);
+}
+#endif
+
+
 // Option設定が格納されたglobal object。
 USI::OptionsMap Options;
 
@@ -163,7 +176,16 @@ namespace USI
           bool found;
           auto tte = TT.probe(pos.state()->key(), found);
           ply++;
-          moves[ply] = found ? pos.move16_to_move((tte->move()) : MOVE_NONE;
+          if (found)
+          {
+            // 置換表にはpsudo_legalではない指し手が含まれるのでそれを弾く。
+            Move m = pos.move16_to_move(tte->move());
+            if (pos.pseudo_legal(m))
+              moves[ply] = m;
+            else
+              moves[ply] = MOVE_NONE;
+          } else
+            moves[ply] = MOVE_NONE;
         }
         while (ply > 0)
           pos_->undo_move(moves[--ply]);
@@ -244,6 +266,11 @@ namespace USI
 
     o["EvalDir"] << Option("eval");
 
+#if defined(EVAL_KPPT) && defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_MSC_VER)
+	// 評価関数パラメーターを共有するか
+	o["EvalShare"] << Option(true);
+#endif
+
     // 各エンジンがOptionを追加したいだろうから、コールバックする。
     USI::extra_option(o);
   }
@@ -304,7 +331,7 @@ namespace USI
 // --------------------
 
 // is_ready_cmd()を外部から呼び出せるようにしておく。(benchコマンドなどから呼び出したいため)
-void is_ready(Position& pos)
+void is_ready()
 {
   static bool first = true;
 
@@ -318,17 +345,18 @@ void is_ready(Position& pos)
     first = false;
   }
 
-  // Positionコマンドが送られてくるまで評価値の全計算をしていないの気持ち悪いのでisreadyコマンドに対して
-  // evalの値を返せるようにこのタイミングで平手局面で初期化してしまう。
-  pos.set(SFEN_HIRATE);
-
   Search::clear();
 }
 
 // isreadyコマンド処理部
 void is_ready_cmd(Position& pos)
 {
-  is_ready(pos);
+  is_ready();
+
+  // Positionコマンドが送られてくるまで評価値の全計算をしていないの気持ち悪いのでisreadyコマンドに対して
+  // evalの値を返せるようにこのタイミングで平手局面で初期化してしまう。
+  pos.set(SFEN_HIRATE);
+
   ponder_mode = false;
   sync_cout << "readyok" << sync_endl;
 }
@@ -546,6 +574,9 @@ void USI::loop(int argc,char* argv[])
       // 積んであるコマンドがあるならそれを実行する。
       // 尽きれば"quit"だと解釈してdoループを抜ける仕様にすることはできるが、
       // そうしてしまうとgoコマンド(これはノンブロッキングなので)の最中にquitが送られてしまう。
+      // ただ、
+      // YaneuraOu-mid.exe bench,quit
+      // のようなことは出来るのでPGOの役には立ちそうである。
       cmd = cmds.front();
       cmds.pop();
     }
@@ -607,7 +638,7 @@ void USI::loop(int argc,char* argv[])
     else if (token == "log") start_logger(true);
 
     // 現在の局面について評価関数を呼び出して、その値を返す。
-    else if (token == "eval") cout << "eval = " << Eval::evaluate(pos) << endl;
+    else if (token == "eval") cout << "eval = " << Eval::compute_eval(pos) << endl;
     else if (token == "evalstat") Eval::print_eval_stat(pos);
 
     // この局面での指し手をすべて出力
@@ -646,7 +677,43 @@ void USI::loop(int argc,char* argv[])
     // 定跡を作るコマンド
     else if (token == "makebook") Book::makebook_cmd(pos, is);
 #endif
-    ;
+
+#ifdef EVAL_LEARN
+    else if (token == "gensfen") Learner::gen_sfen(pos, is);
+    else if (token == "learn") Learner::learn(pos, is);
+#endif
+    // "usinewgame"はゲーム中にsetoptionなどを送らないことを宣言するためのものだが、
+    // 我々はこれに関知しないので単に無視すれば良い。
+    else if (token == "usinewgame") continue; 
+
+    else
+    {
+      //    簡略表現として、
+      //> threads 1
+      //      のように指定したとき、
+      //> setoption name Threads value 1
+      //      と等価なようにしておく。
+      
+      if (!token.empty())
+      {
+        string value;
+        is >> value;
+
+        for (auto& o : Options)
+        {
+          // 大文字、小文字を無視して比較。
+          if (!_stricmp(token.c_str(), o.first.c_str()))
+          {
+            Options[o.first] = value;
+            sync_cout << "Options[" << o.first << "] = " << value << sync_endl;
+
+            goto OPTION_FOUND;
+          }
+        }
+        sync_cout << "No such option: " << token << sync_endl;
+      OPTION_FOUND:;
+      }
+    }
 
   } while (token != "quit" );
   

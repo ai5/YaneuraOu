@@ -7,22 +7,28 @@
 
 // --- ターゲットCPUの選択
 
-// ターゲットCPUを選ぶ。
+#ifndef USE_MAKEFILE
 
-// USE_AVX2  : AVX2(Haswell以降)でサポートされた命令を使うか。pextなど。
-// USE_SSE42 : SSE4.2でサポートされた命令を使うか。popcnt命令など。
-// USE_SSE4  : SSE4　でサポートされた命令を使うか。_mm_testz_si128など。
-// USE_SSE2  : SSE2  でサポートされた命令を使うか。
-// すべてdefineしなければSSEは使用しない。
-// (Windowsの64bit環境だと自動的にSSE2は使えるはず？)
+// USE_AVX512 : AVX-512(サーバー向けSkylake以降)でサポートされた命令を使うか。
+// USE_AVX2   : AVX2(Haswell以降)でサポートされた命令を使うか。pextなど。
+// USE_SSE42  : SSE4.2でサポートされた命令を使うか。popcnt命令など。
+// USE_SSE41  : SSE4.1でサポートされた命令を使うか。_mm_testz_si128など。
+// USE_SSE2   : SSE2  でサポートされた命令を使うか。
+// NO_SSE     : SSEは使用しない。
+// (Windowsの64bit環境だと自動的にSSE2は使えるはず)
+// noSSE ⊂ SSE2 ⊂ SSE4.1 ⊂ SSE4.2 ⊂ AVX2 ⊂  AVX-512
 
-// Visual Studioのプロジェクト設定で
-// 「構成のプロパティ」→「C / C++」→「コード生成」→「拡張命令セットを有効にする」
+// Visual Studioのプロジェクト設定で「構成のプロパティ」→「C / C++」→「コード生成」→「拡張命令セットを有効にする」
 // のところの設定の変更も忘れずに。
 
-// noSSE ⊂ SSE2 ⊂ SSE4 ⊂ SSE4.2 ⊂ AVX2
-// なので、例えば、SSE4.2を選択するときは、
-// USE_SSE4.2をdefineして、そこ以降である、USE_SSE4とUSE_SSE2もdefineしてください。
+// ターゲットCPUのところだけdefineしてください。(残りは自動的にdefineされます。)
+
+//#define USE_AVX512
+//#define USE_AVX2
+//#define USE_SSE42
+//#define USE_SSE41
+//#define USE_SSE2
+//#define NO_SSE
 
 #if defined(USE_AVX2)
 #define USE_SSE42
@@ -34,6 +40,14 @@
 #elif defined(USE_SSE4)
 #define USE_SSE2
 #endif
+
+#else
+// Makefileを使ってbuildするときは、
+// $ make avx2
+// のようにしてビルドすれば自動的にAVX2用がビルドされます。
+
+#endif
+
 
 // 通例hash keyは64bitだが、これを128にするとPosition::state()->long_key()から128bit hash keyが
 // 得られるようになる。研究時に局面が厳密に合致しているかどうかを判定したいときなどに用いる。
@@ -87,12 +101,16 @@
 // 確保するのはもったいないので、そのテーブルを確保するかどうかを選択するためのオプション。
 // 評価関数を用いるなら、どれか一つを選択すべし。
 
-// #define EVAL_NO_USE   // 評価関数を用いないとき。
-// #define EVAL_MATERIAL // 駒得のみの評価関数
-// #define EVAL_PP       // ツツカナ型 2駒関係
-// #define EVAL_KPP      // Bonanza型 3駒関係
-// #define EVAL_KPPT     // Bonanza型 3駒関係、手番つき(Apery WCSC26相当)
-// #define EVAL_PPET     // 技巧型 2駒+利き+手番
+// #define EVAL_NO_USE    // 評価関数を用いないとき。
+// #define EVAL_MATERIAL  // 駒得のみの評価関数
+// #define EVAL_PP        // ツツカナ型 2駒関係
+// #define EVAL_KPP       // Bonanza型 3駒関係
+// #define EVAL_KPPT      // Bonanza型 3駒関係、手番つき(Apery WCSC26相当)
+// #define EVAL_KPPT_FAST // KPPTのAVX2/AVX-512による高速化。(非公開)
+// #define EVAL_PPET      // 技巧型 2駒+利き+手番(開発予定)
+
+// KPPT評価関数の学習に使うときのモード
+// #define EVAL_LEARN
 
 // 長い利き(遠方駒の利き)のライブラリを用いるか。
 // 超高速1手詰め判定などではこのライブラリが必要。
@@ -105,10 +123,11 @@
 //#define USE_MATE_1PLY
 
 // Position::see()を用いるか。これはSEE(Static Exchange Evaluation : 静的取り合い評価)の値を返す関数。
-//#define USE_SEE
+// これは比較的厳密な計算を行うSEE()で、この下にあるUSE_SIMPLE_SEEのほうが少し軽い。
+// というか、このsee()、少し計算バグっているのかも知れない。USE_SIMPLE_SEEのほうを使うこと推奨。
+// #define USE_SEE
 
 // Apery風の単純化されたSEE()を用いる場合
-// これを指定しないときは、厳密な計算を行うSEE()で、そちらのほうが少し重い。
 // #define USE_SIMPLE_SEE
 
 // PV(読み筋)を表示するときに置換表の指し手をかき集めてきて表示するか。
@@ -143,6 +162,20 @@
 
 // 評価関数を計算したときに、それをHashTableに記憶しておく機能。KPPT評価関数においてのみサポート。
 // #define USE_EVAL_HASH
+
+// sfenを256bitにpackする機能、unpackする機能を有効にする。
+// これをdefineするとPosition::packe_sfen(),unpack_sfen()が使えるようになる。
+// #define USE_SFEN_PACKER
+
+// 置換表のprobeに必ず失敗する設定
+// 自己生成棋譜からの学習でqsearch()のPVが欲しいときに
+// 置換表にhitして枝刈りされたときにPVが得られないの悔しいので
+// #define USE_FALSE_PROBE_IN_TT
+
+// 評価関数パラメーターを共有メモリを用いて他プロセスのものと共有する。
+// 少ないメモリのマシンで思考エンジンを何十個も立ち上げようとしたときにメモリ不足になるので
+// 評価関数をshared memoryを用いて他のプロセスと共有する機能。(対応しているのはいまのところKPPT評価関数のみ。かつWindows限定)
+// #define USE_SHARED_MEMORY_IN_EVAL
 
 
 // --------------------
@@ -213,36 +246,41 @@
 
 #ifdef YANEURAOU_2016_MID_ENGINE
 #define ENGINE_NAME "YaneuraOu 2016 Mid"
-// 開発中なのでassertを有効に。
-//#define ASSERT_LV 3
-#define ENABLE_TEST_CMD
 #define EVAL_KPPT
-#define USE_EVAL_HASH
-#define USE_SEE
-//#define USE_SIMPLE_SEE
+//#define USE_EVAL_HASH
+#define USE_SIMPLE_SEE
 #define USE_MOVE_PICKER_2016Q2
-//#define LONG_EFFECT_LIBRARY
 #define USE_MATE_1PLY
 #define USE_ENTERING_KING_WIN
 #define USE_TIME_MANAGEMENT
-#define USE_DROPBIT_IN_STATS
 #define KEEP_PIECE_IN_GENERATE_MOVES
 #define ONE_PLY_EQ_1
+// デバッグ絡み
+//#define ASSERT_LV 3
+#define ENABLE_TEST_CMD
+// 学習絡みのオプション
+#define USE_SFEN_PACKER
+#define EVAL_LEARN
+// 定跡生成絡み
+#define ENABLE_MAKEBOOK_CMD
+// 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)
+#define USE_SHARED_MEMORY_IN_EVAL
 #endif
 
 #ifdef YANEURAOU_2016_LATE_ENGINE
 #define ENGINE_NAME "YaneuraOu 2016 Late"
-// 開発中なのでassertを有効に。
-#define ASSERT_LV 3
+//#define ASSERT_LV 3
 #define ENABLE_TEST_CMD
-#define EVAL_KPPT
-#define USE_SEE
+#define EVAL_KPPT_FAST
+#define USE_EVAL_HASH
+#define USE_SIMPLE_SEE
 #define USE_MOVE_PICKER_2016Q2
-//#define LONG_EFFECT_LIBRARY
+#define LONG_EFFECT_LIBRARY
 #define USE_MATE_1PLY
 #define USE_ENTERING_KING_WIN
 #define USE_TIME_MANAGEMENT
-#define USE_DROPBIT_IN_STATS
+#define KEEP_PIECE_IN_GENERATE_MOVES
+#define ONE_PLY_EQ_1
 #endif
 
 
@@ -304,8 +342,16 @@
 #include <memory>
 #include <map>
 #include <iostream>
+#include <fstream>
+#include <mutex>
+#include <thread>   // このあとMutexをtypedefするので
+#include <condition_variable>
 #include <cstring>  // std::memcpy()
-#include <cmath>    // log()
+#include <cmath>    // log(),std::round()
+#include <climits>  // INT_MAX
+#include <cstddef>  // offsetof
+#include <ctime>    // std::ctime()
+#include <random>   // random_device
 
 // --------------------
 //   diable warnings
@@ -319,6 +365,17 @@
 // C4800 : 'unsigned int': ブール値を 'true' または 'false' に強制的に設定します
 // →　static_cast<bool>(...)において出る。
 #pragma warning(disable : 4800)
+
+// C4996 : 'ctime' : This function or variable may be unsafe.Consider using ctime_s instead.
+#pragma warning(disable : 4996)
+#endif
+
+// C4102 : ラベルは 1 度も参照されません。
+#pragma warning(disable : 4102)
+
+
+// for GCC
+#if defined(__GNUC__)
 #endif
 
 // for Clang
@@ -327,8 +384,6 @@
 //#pragma clang diagnostic ignored "-Wparentheses"      // while (m = mp.next()) {.. } みたいな副作用についての警告
 //#pragma clang diagnostic ignored "-Wmicrosoft"        // 括弧のなかからの gotoでの警告
 
-// for GCC
-// かきかけ
 
 // --------------------
 //      configure
@@ -369,9 +424,37 @@
 #define UNREACHABLE ASSERT_LV3(false);
 #endif
 
-// --------------------
-//      configure
-// --------------------
+// --- alignment tools
+
+// 構造体などのアライメントを揃えるための宣言子
+
+#if defined(_MSC_VER)
+#define ALIGNED(X) __declspec(align(X))
+#elif defined(__GNUC__)
+#define ALIGNED(X) __attribute__ ((aligned(X)))
+#else
+#define ALIGNED(X) 
+#endif
+
+// --- for linux
+
+#if !defined(_MSC_VER)
+// stricmpはlinux系では存在しないらしく、置き換える。
+#define _stricmp strcasecmp
+
+// あと、getline()したときにテキストファイルが'\r\n'だと
+// '\r'が末尾に残るのでこの'\r'を除去するためにwrapperを書く。
+// そのため、fstreamに対してgetline()を呼び出すときは、
+// std::getline()ではなく単にgetline()と書いて、この関数を使うべき。
+inline bool getline(std::fstream& fs, std::string& s)
+{
+	bool b = (bool)std::getline(fs, s);
+	if (s.size() && s[s.size() - 1] == '\r')
+		s.erase(s.size() - 1);
+	return b;
+}
+
+#endif
 
 // --- output for Japanese notation
 
@@ -393,6 +476,14 @@ const bool pretty_jp = false;
 #define HASH_KEY Key256
 #endif
 
+// --- Dropbit
+
+// USE_DROPBIT_IN_STATSがdefineされているときは、Moveの上位16bitに格納するPieceとして駒打ちは +32(PIECE_DROP)　にする。
+#ifdef USE_DROPBIT_IN_STATS
+#define PIECE_DROP 32
+#else
+#define PIECE_DROP 0
+#endif
 
 // ----------------------------
 //      CPU environment
@@ -406,17 +497,87 @@ const bool Is64Bit = true;
 const bool Is64Bit = false;
 #endif
 
-#if defined(USE_AVX2)
+#if defined(USE_AVX512)
+#define TARGET_CPU "AVX-512"
+#elif defined(USE_AVX2)
 #define TARGET_CPU "AVX2"
 #elif defined(USE_SSE42)
 #define TARGET_CPU "SSE4.2"
-#elif defined(USE_SSE4)
-#define TARGET_CPU "SSE4"
+#elif defined(USE_SSE41)
+#define TARGET_CPU "SSE4.1"
 #elif defined(USE_SSE2)
 #define TARGET_CPU "SSE2"
 #else
 #define TARGET_CPU "noSSE"
 #endif
+
+// 上位のCPUをターゲットとするなら、その下位CPUの命令はすべて使えるはずなので…。
+
+#ifdef USE_AVX512
+#define USE_AVX2
+#endif
+
+#ifdef USE_AVX2
+#define USE_SSE42
+#endif
+
+#ifdef USE_SSE42
+#define USE_SSE41
+#endif
+
+#ifdef USE_SSE41
+#define USE_SSE2
+#endif
+
+// ----------------------------
+//     mutex wrapper
+// ----------------------------
+
+// std::mutexをもっと速い実装に差し替えたい時のためにwrapしておく。
+typedef std::mutex Mutex;
+typedef std::condition_variable ConditionVariable;
+
+
+// ----------------------------
+//     mkdir wrapper
+// ----------------------------
+
+#if defined(_MSC_VER)
+
+// Windows用
+
+#include <codecvt>	// mkdirするのにwstringが欲しいのでこれが必要
+
+// フォルダを作成する。日本語は使っていないものとする。
+// カレントフォルダ相対で指定する。
+// 成功すれば0、失敗すれば非0が返る。
+inline int MKDIR(std::string dir_name)
+{
+	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> cv;
+	return _wmkdir(cv.from_bytes(dir_name).c_str());
+}
+#elif defined(_LINUX)
+// linux環境において、この_LINUXというシンボルはmakefileにて定義されるものとする。
+
+// Linux用のmkdir実装。
+#include "sys/stat.h"
+
+inline int MKDIR(std::string dir_name)
+{
+	return ::mkdir(dir_name.c_str(), 0777);
+}
+
+#else
+
+// Linux環境かどうかを判定するためにはmakefileを分けないといけなくなってくるな..
+// linuxでフォルダ掘る機能は、とりあえずナシでいいや..。評価関数ファイルの保存にしか使ってないし…。
+inline int MKDIR(std::string dir_name)
+{
+	return 0;
+}
+
+#endif
+
 
 // ----------------------------
 //     evaluate function
@@ -437,7 +598,7 @@ const bool Is64Bit = false;
 
 // PP,KPP,KPPT,PPEならdo_move()のときに移動した駒の管理をして差分計算
 // また、それらの評価関数は駒割りの計算(EVAL_MATERIAL)に依存するので、それをdefineしてやる。
-#if defined(EVAL_PP) || defined(EVAL_KPP) || defined(EVAL_KPPT) || defined(EVAL_PPE)
+#if defined(EVAL_PP) || defined(EVAL_KPP) || defined(EVAL_KPPT) || defined(EVAL_KPPT_FAST) || defined(EVAL_PPE)
 #define USE_EVAL_DIFF
 #endif
 
