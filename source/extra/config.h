@@ -1,5 +1,5 @@
 ﻿#ifndef _CONFIG_H_
-f#define _CONFIG_H_
+#define _CONFIG_H_
 
 // --------------------
 // コンパイル時設定
@@ -24,12 +24,16 @@ f#define _CONFIG_H_
 // なので、例えば、SSE4.2を選択するときは、
 // USE_SSE4.2をdefineして、そこ以降である、USE_SSE4とUSE_SSE2もdefineしてください。
 
-
-#define USE_AVX2
+#if defined(USE_AVX2)
 #define USE_SSE42
 #define USE_SSE4
 #define USE_SSE2
-
+#elif defined(USE_SSE42)
+#define USE_SSE4
+#define USE_SSE2
+#elif defined(USE_SSE4)
+#define USE_SSE2
+#endif
 
 // 通例hash keyは64bitだが、これを128にするとPosition::state()->long_key()から128bit hash keyが
 // 得られるようになる。研究時に局面が厳密に合致しているかどうかを判定したいときなどに用いる。
@@ -213,7 +217,7 @@ f#define _CONFIG_H_
 //#define ASSERT_LV 3
 #define ENABLE_TEST_CMD
 #define EVAL_KPPT
-//#define USE_EVAL_HASH
+#define USE_EVAL_HASH
 #define USE_SEE
 //#define USE_SIMPLE_SEE
 #define USE_MOVE_PICKER_2016Q2
@@ -404,7 +408,7 @@ const bool Is64Bit = false;
 
 #if defined(USE_AVX2)
 #define TARGET_CPU "AVX2"
-#elif defined(USE_SSE41)
+#elif defined(USE_SSE42)
 #define TARGET_CPU "SSE4.2"
 #elif defined(USE_SSE4)
 #define TARGET_CPU "SSE4"

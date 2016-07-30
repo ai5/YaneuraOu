@@ -118,7 +118,7 @@ namespace Eval
         l0 = list_fb[j];
         l1 = list_fw[j];
 
-#if defined(SSE2)
+#if defined(USE_SSE2)
         // SSEによる実装
 
         // pkppw[l1][0],pkppw[l1][1],pkppb[l0][0],pkppb[l0][1]の16bit変数4つを整数拡張で32bit化して足し合わせる
@@ -399,7 +399,6 @@ namespace Eval
   {
     // 差分計算
     auto score = calc_diff_kpp(pos);
-
     // 非差分計算
 //    auto score = compute_eval(pos);
 
