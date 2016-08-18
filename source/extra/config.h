@@ -260,7 +260,9 @@
 #define ENABLE_TEST_CMD
 // 学習絡みのオプション
 #define USE_SFEN_PACKER
+#ifndef __ANDROID__
 #define EVAL_LEARN
+#endif
 // 定跡生成絡み
 #define ENABLE_MAKEBOOK_CMD
 // 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)

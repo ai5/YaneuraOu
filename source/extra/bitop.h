@@ -25,8 +25,12 @@
 #elif defined (USE_SSE2)
 #include <emmintrin.h>
 #else
-#if defined (__GNUC__) 
-#include <mm_malloc.h> // for _mm_alloc()
+#if defined (__GNUC__)
+#ifdef IS_ARM
+ #include "../arm_mm_malloc.h"
+#else
+ #include <mm_malloc.h> // for _mm_alloc()
+#endif
 #endif
 #endif
 
@@ -168,7 +172,7 @@ FORCE_INLINE int MSB32(uint32_t v) { ASSERT_LV3(v != 0); unsigned long index; _B
 FORCE_INLINE int MSB64(uint64_t v) { ASSERT_LV3(v != 0); return uint32_t(v >> 32) ? 32 + MSB32(uint32_t(v >> 32)) : MSB32(uint32_t(v)); }
 #endif
 
-#elif defined(__GNUC__) && ( defined(__i386__) || defined(__x86_64__) )
+#elif defined(__GNUC__) && ( defined(__i386__) || defined(__x86_64__) || defined(__ANDROID__))
 
 FORCE_INLINE int LSB32(const u32 v) { ASSERT_LV3(v != 0); return __builtin_ctzll(v); }
 FORCE_INLINE int LSB64(const u64 v) { ASSERT_LV3(v != 0); return __builtin_ctzll(v); }

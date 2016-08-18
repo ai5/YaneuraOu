@@ -264,7 +264,7 @@ namespace USI
     o["EnteringKingRule"] << Option(ekr_rules, ekr_rules[EKR_27_POINT], [](auto& o) { set_entering_king_rule(o); });
 #endif
 
-    o["EvalDir"] << Option("eval");
+    o["EvalDir"] << Option("20160307");
 
 #if defined(EVAL_KPPT) && defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_MSC_VER)
 	// 評価関数パラメーターを共有するか

@@ -1052,8 +1052,11 @@ void bench_cmd(Position& pos, istringstream& is)
   vector<string> fens;
 
   // →　デフォルト1024にしておかないと置換表あふれるな。
+#ifdef __ANDROID__
+  string ttSize = (is >> token) ? token : "32";
+#else  
   string ttSize = (is >> token) ? token : "1024";
-
+#endif
   string threads = (is >> token) ? token : "1";
   string limit = (is >> token) ? token : "15";
 

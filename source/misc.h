@@ -196,6 +196,7 @@ struct PRNG {
 
 private:
   uint64_t s;
+public:
   uint64_t rand64() {
     s ^= s >> 12, s ^= s << 25, s ^= s >> 27;
     return s * 2685821657736338717LL;
