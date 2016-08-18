@@ -9,7 +9,6 @@ static inline void *_mm_malloc(int size, int align)
 {
   void *ret=0;
   posix_memalign(&ret, align, size); // Guessing here
-  std::cout << "mem = " << ret << std::endl;
   return ret;
 }
 

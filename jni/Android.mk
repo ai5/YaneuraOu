@@ -22,11 +22,11 @@ ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
 endif
 
 ifeq ($(TARGET_ARCH_ABI),x86_64)
-  ARCH_DEF += -DIS_64BIT -DHAVE_SSE42 -DHAVE_SSE4 -msse4.2
+  ARCH_DEF += -DIS_64BIT -DUSE_SSE42 -msse4.2
 endif
 
 
-LOCAL_MODULE    := YaneuraOuh-$(TARGET_ARCH_ABI)
+LOCAL_MODULE    := YaneuraOu-$(TARGET_ARCH_ABI)
 LOCAL_CXXFLAGS  := -std=c++1y -fno-exceptions -fno-rtti -Wextra -Ofast -MMD -MP -fpermissive -D__STDINT_MACROS $(ARCH_DEF)
 LOCAL_CXXFLAGS += -fPIE
 LOCAL_LDFLAGS += -fPIE -pie 
