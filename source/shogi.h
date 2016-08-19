@@ -57,6 +57,30 @@
 
 #include "extra/bitop.h"
 
+
+#ifdef __ANDROID__
+// gnustlにはto_stringがない
+#include <string>
+#include <sstream>
+namespace std {
+    template<typename T>
+    std::string to_string(const T &n) {
+        std::ostringstream s;
+        s << n;
+        return s.str();
+    }
+}
+
+inline int stoi(const std::string& s) {
+	std::stringstream ss(s);
+	int result = 0;
+	ss >> result;
+	return result;
+}
+
+
+#endif
+
 // --------------------
 //      手番
 // --------------------
@@ -854,7 +878,7 @@ namespace USI {
     // int,bool型への暗黙の変換子
     operator int() const {
       ASSERT_LV1(type == "check" || type == "spin");
-      return type == "spin" ? stoi(currentValue) : currentValue == "true";
+		return type == "spin" ? stoi(currentValue) : currentValue == "true";
     }
 
     // string型への暗黙の変換子
