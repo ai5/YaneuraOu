@@ -45,3 +45,24 @@ bestmove G*1c ponder 4b3b
 Total time (ms) : 125947
 Nodes searched  : 51749074
 Nodes/second    : 410879
+
+
+ÅEWIN SSE42
+info depth 15 seldepth 29 score cp -2826 nodes 7690187 nps 467545 hashfull 816 time 16448 pv G*3c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 1b2b R*7b P*3b G*4b S*3i 2h1g 4c4b 7b4b+ N*3a S*3d 3c3d 3e3d
+bestmove G*3c ponder 4b3b
+
+===========================
+Total time (ms) : 179119
+Nodes searched  : 70081495
+Nodes/second    : 391256
+
+ÅEarm64-v8a
+info depth 15 seldepth 29 score cp -2826 nodes 7690187 nps 156031 hashfull 816 time 49286 pv G*3c 4b3b S*2h
+ 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 1b2b R*7b P*3b G*4b S*3i 2h1g 4c4b 7b4b+ N*3a S*3d 3c3d 3e3d
+bestmove G*3c ponder 4b3b
+
+===========================
+Total time (ms) : 562111
+Nodes searched  : 70081495
+Nodes/second    : 124675
+
