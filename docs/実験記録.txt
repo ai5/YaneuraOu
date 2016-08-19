@@ -10,11 +10,1812 @@
 
 
 ToDo: 
+
+・魔女と持ち時間制で比較。
+
+・気になるのであとで調べる。
+	https://twitter.com/merom686/status/765463718146641920
+	 merom686 > 魔女でたまに35000くらいの謎点数が表示されるのって、静止探索の枝刈りの条件が futilityBase >  -ScoreInfinite  で（-ScoreKnownWinではなくて）、負けを読み切った局面でもfutilityBaseでスコアを更新するから？
+	https://twitter.com/merom686/status/765464617417977856
+	merom686 > 35000くらいの大きい数になるのは、ScoreMateInMaxPlyより少し小さい数をセンチポーン補正で1割くらい大きく表示してるから。
+
 ・kppの手番→ppの手番で代替できるような気が…。
 ・mate3()書く。
 
 
+
+■　2016/08/18
+
+・SSEなしのときにBitboardの>>=演算子の実装が間違っていたの修正。(ai5さん、thanks！)
+
+・置換表サイズによる強さの違いを計測しておく。
+		hash size      :  [16, 256]
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160815
+		engine2 = YaneuraOuV356a.exe , eval = Apery20160815
+
+		1497 - 46 - 1497(50.0% R-0.0)
+
+		変わらず…。ふーん..。
+		8スレッド×10秒だと80倍は必要だから16Mが最適値だとしたらその80倍で1280MBほどないといけないのでは。
+		逆に16MBをいくらに縮めると弱くなるのかそっちのほうが大事かも。
+
+		hash size      :  [16, 256]
+		play_time = b3000 , 1688 - 96 - 1676(50.18% R1.24)
+		3秒でも変わらず。そうなのか…。
+
+
+		hash size      :  [1, 16]
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160815
+		engine2 = YaneuraOuV356a.exe , eval = Apery20160815
+		play_time = b1000 ,  492 - 15 - 493(49.95% R-0.35)
+
+		hash size      :  [2, 16]
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160815
+		engine2 = YaneuraOuV356a.exe , eval = Apery20160815
+		play_time = b1000 ,  472 - 23 - 505(48.31% R-11.74)
+
+		1MB、CPU cacheに載るのでむしろ強くなる可能性が微レ存。
+		まあいいや。hash sizeの変更で強弱はほぼ変わらないということか。
+		256MBより大きくても良いのかは謎だが…。
+
+
+・技巧、自己対戦フレームワークでうまく動くようになったので1,3,5秒でAperyのバイナリと対戦。
+
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160815
+		engine2 = gikou_win_20160606/gikou.exe , eval = dummy
+		play_time = b1000 ,  465 - 7 - 528(46.83% R-22.07)
+
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160815
+		engine2 = gikou_win_20160606/gikou.exe , eval = dummy
+		play_time = b3000 ,  546 - 9 - 445(55.1% R35.53)
+
+		短い時間では技巧有利だが、長い時間では逆転する模様。
+		長い時間においては、やねうら王+Apery20160815で技巧を上回っていると言えると思う。
+
+
+・技巧と長い時間で対局させてチューニング
+	→　ソースコードを修正してビルドしなおす必要あり。
+	→　いや、そうでもないな。pythonの自己対戦フレームワーク、バイナリでreadline()しているのが問題なのか…。
+	→　そうでもなさげ。技巧側、printfで出力しているのをcoutで出力するように修正してビルドしなおしてみる。
+
+
+	Popenのときに universal_newlines=Trueを指定するように修正。
+
+		- proc = subprocess.Popen(cmds[i & 1] , shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE , stdin = subprocess.PIPE)
+		+ proc = subprocess.Popen(cmds[i & 1] , shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE , stdin = subprocess.PIPE , universal_newlines=True)
+
+		-	for line in iter(proc.stdout.readline, b''):
+		+	for line in iter(proc.stdout.readline):
+
+	→　Invalid argument…うむむ？
+
+・技巧のほう、printfをcoutを使うように修正。
+
+	修正案)
+
+		synced_printf.h
+
+		#include <iostream>
+		#include <utility>
+
+		/**
+		 * 排他制御された、printf()関数です.
+		 */
+		#if 0
+		#define SYNCED_PRINTF(...) { \
+		  g_synced_printf_mutex.lock();      \
+		  std::printf(__VA_ARGS__);  \
+		  g_synced_printf_mutex.unlock(); }
+		#else
+
+		//	This is a termination condition to stop that template being infinitely recursive
+		inline void SYNCED_PRINTF(){}
+
+		template<typename First, typename ...Rest>
+		void SYNCED_PRINTF(First && first, Rest && ...rest)
+		{
+		  g_synced_printf_mutex.lock();
+		  std::cout << std::forward<First>(first);
+		  SYNCED_PRINTF(rest...);
+		  std::cout << std::endl;
+		  g_synced_printf_mutex.unlock();
+		}
+		#endif
+		↓
+		あかん。printfの%sを利用してるところがある…。
+		こう書き換える。
+
+		#include <iostream>
+		#define SYNCED_PRINTF(...) { \
+		  g_synced_printf_mutex.lock();    \
+		  char _BUF[4096];                 \
+		  std::sprintf(_BUF,__VA_ARGS__);  \
+		  std::cout << _BUF;               \
+		  g_synced_printf_mutex.unlock(); }
+		 
+		→　pythonの自己対戦フレームワークでうまく対局できるようになった。
+		原因はよくわからないが、printf()をcoutに変更すれば直るということで間違いなさげ。
+		printf()、バッファリングしないことが仇になっているのかも。
+		coutはendlか何かがあるまではバッファリングするのだろうし。
+
+		Jenkinsのjob化したときにjobのキャンセルに対して、技巧のプロセスが残る。
+		うーん…。標準入力のpollingの仕方の問題だとは思うけど、嫌らしいなぁ…。
+		40プロセスもタスクマネージャーから終了させるのはしんどい。
+
+		やねうら王の場合、こう待機しているが、技巧はこれをやっていないからEOFが来ても終了しないのでは…。
+		  if (!getline(cin, cmd)) // 入力が来るかEOFがくるまでここで待機する。
+			cmd = "quit";
+		ああ、わかった。
+		OnQuitCommandEntered()が呼ばれないのか。これバグだな。
+
+			-		  for (std::string line; std::getline(std::cin, line) ; ) {
+
+			+		  for (std::string line; ; ) {
+			+			if (!std::getline(std::cin, line))
+			+				line = "quit";
+
+		こうすべき？
+
+		ReceiveCommands()のほうか。
+
+			-	  for (std::string command;std::getline(std::cin, command);) {
+
+			+	  for (std::string command; ;) {
+			+		if (!std::getline(std::cin, command))
+			+			command = "quit";
+
+		よし、これでうまく動いた。出村さんに報告しておく。
+
+		→　しておいた。
+
+			https://github.com/gikou-official/Gikou/issues/5
+			ReceiveCommands()なのですが、readline()の返し値を見てforループを抜ける構造になっていますが、このときquit処理をしないのでプロセスが終了しないです。Windows環境でCtrl+Z、Linux環境でCtrl+Dが送られてきたときにreadline()から抜けるのですが、このときにプロセスが残って困ります。あるいは、Pythonなどからsubprocessとして起動したときに、親側が死んだときにsubprocess側にはEOFが送られてくるのですが、このときreadline()の返し値は0になるので、このときに正常に終了しないとプロセスが残って困るのです。
+
+			修正案として、getlineの返し値を見て、"quit"コマンドが送られてきたと解釈するのがお手軽だと思います。
+			  for (std::string command; ;) {
+				if (!std::getline(std::cin, command))
+					command = "quit";
+
+			よろしくお願い致します。
+
+		→　よし、自己対戦フレームワークの終了に伴い、技巧が正しく終了するようになった。
+
+
+■　2016/08/17
+
+・30億局面、1 iteration by SGD
+	まだ下がりそう。30億局面、1 iterationでは足りないのか…。そうか…。3,4回は回したほうが良いのかも…。
+
+	179_0045G_V4
+	ちょっと比べてみる。
+
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160812
+		engine2 = YaneuraOuV356a.exe , eval = 179_0045G_V4
+		play_time = r200 ,  496 - 7 - 497(49.95% R-0.35)
+
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160812
+		engine2 = YaneuraOuV356a.exe , eval = 179_0045G_V4
+		play_time = b1000 ,  575 - 11 - 414(58.14% R57.07)
+
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160812
+		engine2 = YaneuraOuV356a.exe , eval = 179_0045G_V4
+		play_time = b5000 ,  548 - 17 - 435(55.75% R40.12)
+
+	まだ負けてるか。もう少し回さないと。
+
+		engine1 = YaneuraOuV356a.exe , eval = 179_0042G_V3
+		engine2 = YaneuraOuV356a.exe , eval = 179_0045G_V4
+		play_time = b1000 ,  408 - 8 - 584(41.13% R-62.3)
+
+		engine1 = YaneuraOuV356a.exe , eval = 179_0042G_V3
+		engine2 = YaneuraOuV356a.exe , eval = 179_0045G_V4
+		play_time = b5000 ,  371 - 17 - 612(37.74% R-86.95)
+
+	前のところからはずいぶん強くなってるのにな…。
+
+	179_0047G_V4
+
+		30億×2
+			rmse = 0.0956222 , mean_error = 384.207
+			..all works..done!!
+			save_eval() finished. folder = \\WS2012_860C_YAN\yanehome\eval\learn_9/6
+
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160812
+		engine2 = YaneuraOuV356a.exe , eval = 179_0047G_V4
+		play_time = b1000 ,  504 - 10 - 486(50.91% R6.32)
+
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160812
+		engine2 = YaneuraOuV356a.exe , eval = 179_0047G_V4
+		play_time = b1000 ,  502 - 13 - 485(50.86% R5.98)
+
+		engine1 = YaneuraOuV356a.exe , eval = 179_0045G_V4
+		engine2 = YaneuraOuV356a.exe , eval = 179_0047G_V4
+		play_time = b1000 ,  489 - 13 - 498(49.54% R-3.17)
+
+		ほぼ互角っぽい。まだサチっていないなら、もう60億ほど回したほうがいいな…。
+
+		engine1 = YaneuraOuV356a.exe , eval = Apery20160815
+		engine2 = YaneuraOuV356a.exe , eval = 179_0047G_V4
+		play_time = b1000 ,  525 - 6 - 469(52.82% R19.59)
+
+		まだ最新版には負けているのか。
+
+	179_0054G_V4
+		さらに30億×2
+			rmse = 0.0936538 , mean_error = 365.137
+			7537930000 sfens , at Wed Aug 17 19:10:42 2016
+
+				engine1 = YaneuraOuV356a.exe , eval = 179_0054G_V4
+				engine2 = YaneuraOuV356a.exe , eval = Apery20160812
+
+				r300 , 680 - 7 - 613(52.59% R18.02)
+
+				engine1 = YaneuraOuV356a.exe , eval = 179_0054G_V4
+				engine2 = YaneuraOuV356a.exe , eval = Apery20160815
+				b3000 , 419 - 18 - 473(46.97% R-21.06)
+
+	179_0060G_V4
+		さらに30億×2
+			rmse = 0.092966 , mean_error = 359.047
+
+
+
+・魔女と
+
+	engine1 = YaneuraOuV356a.exe , eval = Apery20160815
+	engine2 = SM_V110/SILENT_MAJORITY_AVX2_x64.exe , eval = Apery20160815
+	engine_threads = 4
+	play_time = b1000 ,  488 - 29 - 483(50.26% R1.79)
+	play_time = b3000 ,  481 - 42 - 477(50.21% R1.45)
+	play_time = b5000 ,  138 - 18 - 124(52.67% R18.58)
+	play_time = b5000 ,  178 - 18 - 164(52.05% R14.23)
+	play_time = b10000 ,  373 - 69 - 348(51.73% R12.05)
+	play_time = b15000 ,  244 - 35 - 291(45.61% R-30.6)
+	
+	互角ぐらいと見て良いのでは。15秒で負け越したのが少し気分が悪いが、これ、計算資源的に現実的には計測できない。
+
+
+・新自己対戦フレームワークでHTありにて計測
+
+	engine1 = YaneuraOuV356a.exe , eval = Apery20160505
+	engine2 = YaneuraOuV356a.exe , eval = Apery20160803
+	play_time = r100 ,  4423 - 73 - 5504(44.56% R-37.98)
+
+	engine1 = YaneuraOuV356a.exe , eval = Apery20160505
+	engine2 = YaneuraOuV356a.exe , eval = Apery20160815
+	play_time = b2000 ,  391 - 10 - 599(39.49% R-74.1)
+
+	engine1 = YaneuraOuV356a.exe , eval = Apery20160505
+	engine2 = YaneuraOuV356a.exe , eval = Apery20160815
+	play_time = b5000 ,  288 - 7 - 705(29.0% R-155.52)
+
+	engine1 = YaneuraOuV356a.exe , eval = Apery20160812
+	engine2 = YaneuraOuV356a.exe , eval = Apery20160815
+	play_time = r300 ,  4736 - 130 - 5134(47.98% R-14.02)
+
+	engine1 = YaneuraOuV356a.exe , eval = Apery20160730
+	engine2 = YaneuraOuV356a.exe , eval = Apery20160803
+	play_time = r100 ,  4676 - 86 - 5238(47.17% R-19.72)
+	やはり、Aperyの0730→0803は強くなっていたのか。そうか…。
+
+・技巧も自己対戦フレームワークで対局できるようにする。
+	engine_threadsも自己対戦フレームワークで指定できるように。
+	jenkinsのjobも修正。
+
+	> start /B /WAIT /NODE %EXECUTOR_NUMBER% c:/python27/python.exe %YANEHOME%\script\engine_invoker2.py %YANEHOME% %ENGINE1% %EVAL1%  %ENGINE2% %EVAL2% %HT_CORES% %LOOP% %EXECUTOR_NUMBER% %ENGINE_THREADS% { %TIMES% }
+
+	→　修正した。
+
+	→　技巧、標準出力が細切れでやってくる。なんぞこれ。わけがわからん…。
+
+	[7]>info depth
+	[7]>10 se
+	[7]>ldepth 10 time 32 nodes 25423 nps 794468 hashfull 999 score cp 120 multipv 1 pv 2b4d
+	[7]>4i5h 6a5b 5g5f
+	[7]>5d6e 4f5e 4d2b 5e6d 5a4a 5f5e
+
+	技巧のソースコード見て、修正してビルドしなおすか…。
+	
+
+・魔女と長い時間で対局させてチューニング
+・魔女を自己対戦フレームワークで動作させる。
+	→　たぶん動くようになった。
+	engine_threads 4でぶん回しておく。2秒,5秒で1000回。
+	→　評価関数バイナリの最初の読み込みにめっさ時間かかる…。
+	→　動作自体は無事動いてくれている模様。
+
+
+
+・前回の30億局面をもとに学習を回しておく。
+
+		Options[EvalDir] = eval/179_0042G_V3
+		Options[EvalSaveDir] = \\WS2012_860C_YAN\yanehome\eval\learn_9
+		Options[Threads] = 40
+		Options[Hash] = 4096
+		Options[EvalShare] = false
+		learn from 146.bin , 147.bin , 149.bin , learn , dir = \\WS2012_860C_YAN\yanehome\learn_sfen , loop = 2
+
+		Gradient Method : SGD
+		Loss Function   : CROSS_ENTOROPY
+		mini-batch size : 1000000
+		init..info string use non-shared eval_memory.
+		init done.
+
+		open filename = \\WS2012_860C_YAN\yanehome\learn_sfen/146.bin 
+		70000 sfens , at Tue Aug 16 10:53:36 2016
+
+		rmse = 0.110197 , mean_error = 452.911
+		…
+
+・isreadyが連続対局のときやサーバー対局のときに毎回送られてくることは保証されているのか？
+	USIプロトコルでは、
+		>  対局開始前に送ります。
+	とあるな…。
+
+	将棋所では連続対局のときに
+		isready
+		usinewgame
+	の両方を送ってくるようだ。
+
+	だとしたら、usinewgameが要らない子なような…。
+	Stockfishのほうは、いつの間にか、ucinewgameのほうでSearchの初期化をやるように修正されてる。うーむ..。
+	まあいいや。usinewgame使わないほうが、手でコマンド送るときに楽なのでこれで初期化するのはやらないようにしよう。
+	
+	将棋所でのサーバー対局でも同様の動作かテストしておく。
+	isreadyコマンドはfloodgateのサーバー側から送られてくるようだ。
+	だとしたら対局ごとにisreadyが送られてくるかどうかはサーバー側依存なのでは…。
+
+
+■　2016/08/16
+
+
+・無教師から学習させていたものがそれなりの強さになったようだ。これを育てていく。
+
+・あー、別のプロセッサグループのほうで確保している共有メモリ上の評価関数バイナリにアクセスしてnps下がる問題があるのか…。
+	弱くなるのは、これかも知れん…。この問題、回避できるか考えるか…。
+	Numa指定しているので、これで回避するか。
+	→　そうした。
+
+		auto dir_name = (string)Options["EvalDir"] + "Numa" + (string)Options["EngineNuma"];
+
+
+・新Apery評価関数
+
+		engine1 = YaneuraOuV356.exe , eval = Apery20160812
+		engine2 = YaneuraOuV356.exe , eval = Apery20160815
+		play_time = R100 ,  459 - 9 - 532(46.32% R-25.64)
+
+		engine1 = YaneuraOuV355c.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160815
+		play_time = r100 ,  4608 - 88 - 5304(46.49% R-24.44)
+
+・
+	pythonの自己対戦スクリプトでこのモードを使うオプション追加。
+	R100と指定したときにnodes as timeモードでgo rtimeすればいい。
+
+・npmsec(nodes time)実装。
+
+	StockfishのこのコードだとavailableNodesマイナスになるな…。
+
+		if (Limits.npmsec)
+			Time.availableNodes += Limits.inc[us] - Threads.nodes_searched();
+
+			↓正しい
+
+		if (Limits.npmsec)
+			Time.availableNodes = std::max(Time.availableNodes + Limits.inc[us] - Threads.nodes_searched() , (s64)0);
+
+	→　うまく動くようになった。
+
+		nodestime 600
+		bookfile no_book
+		threads 1
+		isready
+		go btime 0 wtime 0 byoyomi 10000
+
+
+・棋譜生成中に一回落ちたようだ。まだ何かバグがあるのか？
+
+	王がいないのに駒を入れ替えようとしている気がする。修正。
+
+	-	  if (rand(5) == 0 && !pos.in_check())
+	+	  if (rand(5) == 0 && !pos.in_check() && pos.pieces(pos.side_to_move()).pop_count() >= 6)
+
+	→　局面生成、盤上に王が1枚しかないときに盤上の2駒を交換しようとするバグ修正。
+
+・結論的には論理コア数で対局させている部分が勝率が偏る原因なのかも。
+
+V3.55d
+・勝率が偏る何らかのバグがあるのではなかろうか。
+	・試合ごとに100%先後入れ替えを行うコードに変更。
+
+	・node timeを使うようにして実験して結果を比較する。
+	rtime 100、探索ノード数、えらくバラけるのな…。計測する。
+
+	r800でこんなにノード数がばらけるのか…。
+		[0]>[0]:nodes = 20363864
+		[1]>[1]:nodes = 20744891
+		[2]>[2]:nodes = 21874493
+		[3]>[3]:nodes = 21750293
+		[4]>[4]:nodes = 22399119
+		[5]>[5]:nodes = 21734169
+		[6]>[6]:nodes = 21752231
+		[7]>[7]:nodes = 21675186
+		[8]>[8]:nodes = 21572781
+		[9]>[9]:nodes = 21487627
+		[10]>[10]:nodes = 20881973
+		[11]>[11]:nodes = 20663296
+		[12]>[12]:nodes = 22916210
+		[13]>[13]:nodes = 22998869
+		[14]>[14]:nodes = 26664840
+		[15]>[15]:nodes = 26381428
+		[16]>[16]:nodes = 24247710
+		[17]>[17]:nodes = 24819605
+		[18]>[18]:nodes = 21067147
+		[19]>[19]:nodes = 21018924
+		[20]>[20]:nodes = 23893265
+		[21]>[21]:nodes = 24507673
+		[22]>[22]:nodes = 21255278
+		[23]>[23]:nodes = 20963676
+		[24]>[24]:nodes = 20965547
+		[25]>[25]:nodes = 21068620
+		[26]>[26]:nodes = 22536674
+		[27]>[27]:nodes = 22111534
+		[28]>[28]:nodes = 22879069
+		[29]>[29]:nodes = 22788974
+		[30]>[30]:nodes = 21381039
+		[31]>[31]:nodes = 21017634
+		[32]>[32]:nodes = 21315693
+		[33]>[33]:nodes = 21722500
+		[34]>[34]:nodes = 26349641
+		[35]>[35]:nodes = 26164092
+		[36]>[36]:nodes = 20930819
+		[37]>[37]:nodes = 20491492
+		[38]>[38]:nodes = 19211609
+		[39]>[39]:nodes = 18682395
+		[40]>[40]:nodes = 27855861
+		[41]>[41]:nodes = 27651489
+		[42]>[42]:nodes = 21556602
+		[43]>[43]:nodes = 21282200
+		[44]>[44]:nodes = 22478077
+		[45]>[45]:nodes = 22968655
+		[46]>[46]:nodes = 20460481
+		[47]>[47]:nodes = 19843664
+		[48]>[48]:nodes = 20870773
+		[49]>[49]:nodes = 20785280
+		[50]>[50]:nodes = 23068323
+		[51]>[51]:nodes = 23565440
+		[52]>[52]:nodes = 21320920
+		[53]>[53]:nodes = 21161635
+		[54]>[54]:nodes = 21115954
+		[55]>[55]:nodes = 20995289
+		[56]>[56]:nodes = 21724263
+		[57]>[57]:nodes = 21012110
+		[58]>[58]:nodes = 23672782
+		[59]>[59]:nodes = 22954859
+		[60]>[60]:nodes = 15097775
+		[61]>[61]:nodes = 15073528
+		[62]>[62]:nodes = 29348011
+		[63]>[63]:nodes = 28035943
+		[64]>[64]:nodes = 22817543
+		[65]>[65]:nodes = 22589792
+		[66]>[66]:nodes = 28242065
+		[67]>[67]:nodes = 27440958
+		[68]>[68]:nodes = 21412728
+		[69]>[69]:nodes = 20802815
+		[70]>[70]:nodes = 27630030
+		[71]>[71]:nodes = 27063267
+		[72]>[72]:nodes = 17403381
+		[73]>[73]:nodes = 17323907
+		[74]>[74]:nodes = 16034151
+		[75]>[75]:nodes = 15697004
+		[76]>[76]:nodes = 22112309
+		[77]>[77]:nodes = 21364827
+		[78]>[78]:nodes = 22952334
+		[79]>[79]:nodes = 22628834
+
+		15097775 - 27630030 : 1.83倍の差
+
+		→　物理コア数の対局に変更してみると？
+
+		[0]>[0]:nodes = 72778726
+		[1]>[1]:nodes = 71657256
+		[2]>[2]:nodes = 64666496
+		[3]>[3]:nodes = 63066345
+		[4]>[4]:nodes = 71414765
+		[5]>[5]:nodes = 73613827
+		[6]>[6]:nodes = 56565616
+		[7]>[7]:nodes = 58077844
+		[8]>[8]:nodes = 68926843
+		[9]>[9]:nodes = 69559993
+		[10]>[10]:nodes = 74962515
+		[11]>[11]:nodes = 74549508
+		[12]>[12]:nodes = 70282782
+		[13]>[13]:nodes = 68744785
+		[14]>[14]:nodes = 60240593
+		[15]>[15]:nodes = 61250890
+		[16]>[16]:nodes = 68752998
+		[17]>[17]:nodes = 69279530
+		[18]>[18]:nodes = 68655945
+		[19]>[19]:nodes = 66190164
+		[20]>[20]:nodes = 57567300
+		[21]>[21]:nodes = 56114884
+		[22]>[22]:nodes = 54486533
+		[23]>[23]:nodes = 52976596
+		[24]>[24]:nodes = 66878126
+		[25]>[25]:nodes = 68354855
+		[26]>[26]:nodes = 72467258
+		[27]>[27]:nodes = 72728019
+		[28]>[28]:nodes = 68099646
+		[29]>[29]:nodes = 67738500
+		[30]>[30]:nodes = 68910429
+		[31]>[31]:nodes = 68203175
+		[32]>[32]:nodes = 59719500
+		[33]>[33]:nodes = 59823454
+		[34]>[34]:nodes = 66506641
+		[35]>[35]:nodes = 65057131
+		[36]>[36]:nodes = 76214742
+		[37]>[37]:nodes = 77401322
+		[38]>[38]:nodes = 69462037
+		[39]>[39]:nodes = 69251546
+
+		56565616 vs 77401322 : 1.36倍の差。少しマシ。
+
+		// 対局は物理コア数にしたほうが安定するようだ。
+
+		Core i7 4771 HT8 vs PT4
+
+		[0]>[0]:nodes = 3711650
+		[1]>[1]:nodes = 3594807
+		[2]>[2]:nodes = 3527019
+		[3]>[3]:nodes = 3314408
+		[4]>[4]:nodes = 3838580
+		[5]>[5]:nodes = 3751745
+		[6]>[6]:nodes = 4198603
+		[7]>[7]:nodes = 4204947
+		[8]>[8]:nodes = 3484324
+		[9]>[9]:nodes = 3575383
+		[10]>[10]:nodes = 4398044
+		[11]>[11]:nodes = 4328146
+		[12]>[12]:nodes = 3596432
+		[13]>[13]:nodes = 3609833
+		[14]>[14]:nodes = 2979575
+		[15]>[15]:nodes = 2809125
+
+		[0]>[0]:nodes = 10579514
+		[1]>[1]:nodes = 10800451
+		[2]>[2]:nodes = 9133548
+		[3]>[3]:nodes = 8892816
+		[4]>[4]:nodes = 9813755
+		[5]>[5]:nodes = 9812529
+		[6]>[6]:nodes = 11102674
+		[7]>[7]:nodes = 10892339
+
+V3.55c
+	・2698bがおかしいとしたら評価関数の破壊はされていないわけだから、起動時からおかしいことになるのだが、
+	原因が思いつかない。起動時にすべておかしいということは、評価関数を共有していて、ネットワークからの
+	評価関数の読み込みに失敗している可能性が高いが、それを検知することは簡単には出来ない。
+	CreateしたときにのみevalのCheckSumの値を表示するか？
+	→　そんなことをせずともnodetimeにして結果が一致すれば、2698b、悪くないことになるのだが。
+	ときどきメモリが破損するとしたらそうでもないか。Createに対してなんとかするか。うむむ…。
+	"DISPLAY"の文字が含まれているときはpythonスクリプトのほうで表示することにするか。
+	→　2698b、やはりそんな問題ではなさげなのだが…。
+	
+		check_sum = 28137038
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r500 ,  434 - 20 - 546(44.29% R-39.88)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r500 ,  420 - 13 - 567(42.55% R-52.13)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r500 ,  425 - 13 - 562(43.06% R-48.54)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r500 ,  430 - 10 - 560(43.43% R-45.89)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r500 ,  445 - 12 - 543(45.04% R-34.58)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r500 ,  458 - 13 - 529(46.4% R-25.04)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r600 ,  423 - 16 - 561(42.99% R-49.05)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r700 ,  473 - 11 - 516(47.83% R-15.12)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355c.exe , eval = Apery20160812
+		play_time = r800 ,  420 - 11 - 569(42.47% R-52.75)
+
+
+
+V3.55b
+
+・深いdepthでの枝刈り
+	cf. https://github.com/official-stockfish/Stockfish/commit/714329dbdc3c32af6e899c85409935dc3b6d799c
+			  // 次の子nodeにおいて浅い深さになる場合、負のSSE値を持つ指し手の枝刈り
+			  if (predictedDepth < PARAM_FUTILITY_AT_PARENT_NODE_SEE_DEPTH * ONE_PLY && pos.see_sign(move) < VALUE_ZERO)
+				  continue;
+
+				  ↓
+
+			  // 浅いdepthで負のSSE値を持つ指し手と、深いdepthで減少する閾値を下回る指し手の枝刈り
+			  if (predictedDepth < 8 * ONE_PLY)
+			  {
+				  Value see_v = predictedDepth < PARAM_FUTILITY_AT_PARENT_NODE_SEE_DEPTH * ONE_PLY ? VALUE_ZERO
+					  : -PawnValue * 2 * Value(predictedDepth - 3 * ONE_PLY);
+
+				  if (pos.see_sign(move) < see_v)
+					  continue;
+			  }
+
+		engine1 = YaneuraOuV355a.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355b.exe , eval = Apery20160812
+		play_time = r100 ,  5571 - 83 - 4346(56.18% R43.14)
+
+		→　この枝刈り、長い持ち時間で効果がある可能性も…。
+
+		b2000 , 3987 - 151 - 3112(56.16% R43.04)
+
+		→　そうでもないような？
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355b.exe , eval = Apery20160812
+		3735 - 144 - 3411(52.27% R15.76)
+
+		トータルで弱くなってしまった…。
+
+V3.55a
+・depth 1でのnull pruning追加。
+	cf. https://github.com/official-stockfish/Stockfish/commit/f2f3a06a1acfa14b3054bfd73d6c3966c326a7cc
+
+・NMP(null move pruning)をstaticEvalの値に応じて段階的に適用する。
+	cf. https://github.com/official-stockfish/Stockfish/commit/76971d8acba4af1896cf94e1278f69ae2084d45d
+	cf.	https://github.com/official-stockfish/Stockfish/commit/ade3bb9a4e774aa9b760235f3b0ee42e0a0420d9
+
+		+        && (ss->staticEval >= beta - 35 * (depth / ONE_PLY - 6) || depth >= 13 * ONE_PLY)
+
+
+		engine1 = YaneuraOuV355.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355a.exe , eval = Apery20160812
+		play_time = r100 ,  4019 - 94 - 5887(40.57% R-66.31)
+
+		engine1 = YaneuraOuV355.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355a.exe , eval = Apery20160812
+		play_time = b2000 ,  1003 - 38 - 959(51.12% R7.79)
+
+		短い時間では効果があるが、長い時間だと効果不明。
+
+V3.55
+・ColorFromTo historyを追加。
+	cf.
+		Use Color-From-To history stats to help sort moves
+		https://github.com/official-stockfish/Stockfish/commit/b3525fa9ea88e230a38d72351826cbc16c282938
+
+	・from_sq()追加。
+	・FromToStats導入。
+		→　これを打ち駒を考慮するように拡張。
+
+		ASSERT_LV3(f < SQ_NB_PLUS1 + 7);
+		if (f >= SQ_NB_PLUS1 + 7)
+			std::cout << (int)f << " " << from_sq(m);
+
+
+		engine1 = YaneuraOuV354.exe , eval = Apery20160812
+		engine2 = YaneuraOuV355.exe , eval = Apery20160812
+		play_time = r100 ,  4916 - 67 - 5017(49.49% R-3.53)
+		わずかに強くはなっている模様。
+
+		play_time = r500 ,  864 - 36 - 1370(38.68% R-80.08) : 2698b何かおかしいのでは…。
+		？　異常値
+
+		b2000 , 3821 - 157 - 4012(48.78% R-8.47)
+
+		engine1 = YaneuraOuV355.exe , eval = Apery20160812
+		engine2 = YaneuraOuV354.exe , eval = Apery20160812
+		play_time = r500 ,  4970 - 125 - 4905(50.33% R2.29)
+
+V3.54
+・futility margin変更
+	cf. https://github.com/official-stockfish/Stockfish/commit/85924db496af2fb8d70b6c89b17fc8541339ca19
+
+	-  Value futility_margin(Depth d) { return Value(200 * d); }
+	+  Value futility_margin(Depth d) { return Value(150 * d); }
+
+		　PARAM_FUTILITY_MARGIN_ALPHA を200→150に。
+
+           if (   predictedDepth < 7 * ONE_PLY
+	-              && ss->staticEval + futility_margin(predictedDepth) + 256 <= alpha)
+ 	+              && ss->staticEval + 256 + 200 * predictedDepth / ONE_PLY <= alpha)
+
+		engine1 = YaneuraOuV353.exe , eval = Apery20160812
+		engine2 = YaneuraOuV354.exe , eval = Apery20160812
+		play_time = r100 ,  4602 - 73 - 5325(46.36% R-25.35)
+		play_time = b1000 , 1211 - 26 - 1423(45.98% R-28.02)
+
+
+■　2016/08/15
+
+・pythonフレームワークによる自己対戦
+
+	Apery20160505      vs Apery20160505 ,  r100 , 5008 - 83 - 4899(50.55% R3.82)
+
+	Apery20160505      vs haku20160729  ,  r100 , 3518 - 75 - 6397(35.48% R-103.87)
+	haku20160729no_ave vs haku20160729  ,  r100 , 4956 - 95 - 4939(50.09% R0.6)
+	haku20160729       vs Apery20160812 , b2000 , 1032 - 31 - 1507(40.65% R-65.77)
+	Apery20160505      vs haku20160729  , b2000 ,  952 - 33 - 1625(36.94% R-92.89)
+
+	Apery20160812      vs haku20160729  ,  r100 , 5227 - 52 - 4711(52.6% R18.06)
+
+	Apery20160812      vs Apery20160810 ,  r100 , 5014 - 71 - 4905(50.55% R3.82)
+	Apery20160810      vs Apery20160812 , b2000 ,  1041 - 35 - 1194(46.58% R-23.82)
+
+	Apery20160731      vs Apery20160810 ,  r100 , 5996 - 56 - 3938(60.36% R73.03)   ※3
+	Apery20160731      vs Apery20160810 ,  r500 ,  2100 - 34 - 2016(51.02% R7.09)   ※3
+	Apery20160731      vs Apery20160810 , b2000 ,  1128 - 25 - 1247(47.49% R-17.42) ※3
+	Apery20160810      vs Apery20160731 , b2000 ,  1284 - 17 - 1139(52.99% R20.82)  ※3
+
+	Apery20160505      vs Apery20160812 ,  r100 , 4282 - 52 - 5656(43.09% R-48.35)  ※2
+	Apery20160505      vs Apery20160812 , b2000 ,  935 - 30 - 1905(32.92% R-123.63)
+	Apery20160505      vs Apery20160812 , b2000 ,  960 - 31 - 1979(32.66% R-125.67)
+
+	Apery20160812      vs 179_0042G_V3  ,  r100 ,  5369 - 39 - 4592(53.9% R27.16)
+	Apery20160812      vs 179_0042G_V3  , b2000 ,   707 - 12 - 441(61.59% R81.99)
+
+	Apery20160505(non shared memory) vs Apery20160505(shared memory) , r100 thread4 , 4086 - 104 - 4000(50.53% R3.7)
+	
+
+	haku20160729       = finalize時の平均化あり
+	haku20160729no_ave = finalize時の平均化なし
+	r100 = rtime 100
+	b2000 = byoyomi 2000 (ただしNetworkDelay2 = 500)
+
+	※1 共有メモリを使用することによる勝率低下はなさげ。
+	※2 以前の自己対戦フレームワークと勝率はさほど違いはなさげ。
+	※3 短い時間では正確にでなさげ。Stockfish7では短い時間では枝刈りの性質が長い時間と違うのでは。
+
+・isready()のときのメモリチェックのコード追加。
+	→　追加した。
+
+
+
+■　2016/08/14
+
+・pythonによる連続自己対戦フレームワーク(仮)
+	→　script/engine_invoker2.py追加。
+
+	pythonのsubprocessだとreadがblockingする。Windowsだとこれを回避するのすごく難しい。
+	無駄なthread作りたくないというのに…。
+
+		# Non-blocking read on a subprocess.PIPE in python
+		# http://stackoverflow.com/questions/375427/non-blocking-read-on-a-subprocess-pipe-in-python
+	
+		fcntl indeed doesn't work on Windows
+
+		http://code.activestate.com/recipes/440554-module-to-allow-asynchronous-subprocess-use-on-win/
+
+		The portable way: letting the main thread block
+		https://repolinux.wordpress.com/2012/10/09/non-blocking-read-from-stdin-in-python/#windows
+
+	ああ、なんとかなった感じ。
+
+		# process is not done, wait a bit and check again.
+		time.sleep(0)
+
+	このsleep(0)を入れると1000対局超えたあたりからCPU負荷率が下がっていく。
+	OSのスレッドスケジューラーに絡む何かかも。
+
+	pythonのスクリプト側で定跡と時間制御を実装して、もう少し原因を調べてみる。
+
+	sleep(1)で反応ないの、sleep()の単位が1秒だからか…。そうか..
+	CPU負荷率下がるの、isreadyとかで待機待ちになっているっぽい？
+	→　対局スクリプトにfile loggingの機能追加。ログを精査する。
+
+	gameoverの変数名がgameoveに脱字してて、それゆえdrawのときにフラグが
+	適切にセットされていなかった。なんぞ、このバグ…。
+
+	→　pythonで変数宣言強制できたほうが良いのでは…。まあいいや。
+
+	pythonスクリプトに定跡と時間制御実装して、動作テストしよう。
+
+[1]<position startpos moves 2g2f 3c3d 7g7f 8c8d 6g6f 8d8e 8h7g 3a3b 4i5h 7a6b 3i4h 5a4b 5h6g 6a5b 2f2e 4b3a 7i7h 7c7d 2e2d 2c2d 2h2d 2b3c 2d2h P*2d 5i6h 3b2c 6h7i 4a3b 5g5f 9c9d 3g3f 6c6d 2i3g 6b6c 4h5g 8a7c 5g4f 4c4d P*2e 2d2e 1g1f 1c1d 3f3e 3c5a 2h2e 5b4c 2e2f P*2d 7g6h 3d3e 4f3e P*3d 3e2d 2c2d 2f2d 5a2d 6h2d 8e8f 8g8f R*2h 2d6h S*5h
+[1]<go btime 5000 wtime 5000 byoyomi 3000
+[1]>info nodes 3541614 time 6010
+[1]>bestmove 6i5h ponder 2h5h+
+	時間余ってる？あれれ？
+
+position startpos moves 2g2f 3c3d 7g7f 8c8d 6g6f 8d8e 8h7g 3a3b 4i5h 7a6b 3i4h 5a4b 5h6g 6a5b 2f2e 4b3a 7i7h 7c7d 2e2d 2c2d 2h2d 2b3c 2d2h P*2d 5i6h 3b2c 6h7i 4a3b 5g5f 9c9d 3g3f 6c6d 2i3g 6b6c 4h5g 8a7c 5g4f 4c4d P*2e 2d2e 1g1f 1c1d 3f3e 3c5a 2h2e 5b4c 2e2f P*2d 7g6h 3d3e 4f3e P*3d 3e2d 2c2d 2f2d 5a2d 6h2d 8e8f 8g8f R*2h 2d6h S*5h
+go btime 5000 wtime 5000 byoyomi 3000
+→　合ってる気がする…。NetworkDelay絡みか？
+
+
+
+■　2016/08/09
+
+Position::is_mated()でstalemateを、玉以外に自駒がいない状態と定義してあるのは間違い。
+以下の局面図で、81の銀は動かせるが、動かすと51の飛車に素ぬかれる。
+なのでstalemateの判定の仕方は、これではまずく、王手がかかっていないときも
+合法手が1つ以上あるかをテストする必要がある。
+
+ 玉 銀 □ □^飛^金 □^桂 □
+ 歩 歩^金 □ □^歩^桂^歩^香
+ □ □^と^歩 □^玉□ □ □
+ □ □ □^龍^歩 □^金^銀□
+ □ □^圭□ □^香□ □^歩
+ □^銀 □ □ □ □^歩 □ □
+ □^銀^馬 □ □ □ □ □ □
+ □ □ □ □ □ □ □ □ □
+ □ □ □^杏 □ □ □^馬 □
+
+ ゆえに以下のコードは、破棄。
+
+  // a. 王手している駒がない
+  // b. stalemateではない
+  // ならば、この時点で不詰めが証明される。
+  // b.のstatemateは、c. 玉以外いなくて、d. 手駒がない、かつ、e. 玉の行き場所すべてに相手の利きがある
+  // ことがその条件であるが、c.かつd.であることだけここでは調べて、e.は実際の指し手生成で調べることにする。
+  // (stalemate自体レアケースなのでそこを高速化してもあまり意味がない)
+  // if (a && b) return false;
+  // → if (a && !(c && d && e)) return false; // b = !(c && d && e) より
+  // → if (a && !(c && d)) return false;      // eはこのあと判定する
+  // → if (a && (!c || !d)) return false;     // ドモルガンの法則より
+  auto Us = sideToMove;
+  if (!st->checkersBB && (hand[Us] != HAND_ZERO || pieces(Us) != Bitboard(king_square(Us))))
+    return false;
+
+
+
+■　2016/08/05
+
+・自己対戦サーバーで、メッセージをtrapする仕組みを入れるか。
+　んー、それにしてもCPU負荷が100%でもないのに探索できないというのはありえないような気もするのだが…。
+
+・メモリ共有、40HTで読み込み中に別のスレッドが壊す/使いはじめるということはあるか?
+　　→　読み込み終わるまでmutexで囲われてる…。mutexとmemory mapped fileの解放順序は…問題ないと思う。
+
+・hash size 24MBでシミュレーションしてみる。
+	→　table[x & clusterCount]だから配列からはみ出ることがありえないな…。
+
+・評価関数のメモリ、readonlyに出来るか試す。
+	→　難しそう。
+
+・局面生成してみる。
+	depth 5で20万局面20秒(HT40) 2億局面 = 2万秒
+	3PCでも24時間(86400秒)で8億局面×3PC×dual = 50億局面ぐらい生成できるのか。
+	depth 5が現実解かも知れない。25億局面ほど生成して追加学習させて強くなるかテストしよう。
+
+	4PC、1000Wのコンセントでギリギリいけそう。
+	250(2698)+250(2698)+300(2698)+120(4771) = 920W
+	HDDとかプリンター酷使したら落ちたりして…。
+	別系統から1000W取ってきて、このあとの2PCと、2698ひとつはそちらから取ろう。
+	
+
+■　2016/08/04
+
+・自己対戦の戦績がアテにならんのを何とかする
+	・Hash sizeを変えた場合、勝率にどれくらい影響があるのかを調査。
+		hash 16MB、32byteで3局面だから、1.5M局面、入るはずなのだが、これで足りないのか？
+		0.1秒で埋め尽くされるとは考えにくいのだが…。
+
+		hash 128MBで比較してみる。
+		#	f.write("setoption name Hash value 16\n")
+			f.write("setoption name Hash value 128\n")
+
+	・0.1秒だと、スレッド負荷が100%にならないという問題はあるようだ。
+		→　指し手を返す部分などがあるから、仕方ないか…。
+
+	・local-game-server、エラーをきちんとトラップするように。
+		→　local-game-serverというより、python側のスクリプトの問題か？
+
++			if "Error" in line:
++				print line
+
+		→　エラーはトラップされるようになった。よしよし。
+
+	・pythonからlocal-game-serverをinvokeしているときに途中で結果を返すことは出来るのか？
+
+	pollしてればいいのか…。
+
+		retcode = proc.poll()
+		if retcode is not None: # Process finished.
+					running_procs.remove(proc)
+		print proc.stdout.read()
+
+		→　できた。
+
+	・評価関数の読み込みに失敗したときにexitしているのに負けているのは何なのかを調査
+		→　local-game-server、おかしいのでは…。
+			local-game-server、もっとみなおす。
+		→　わかった。評価関数読み込みに失敗するが、shared memoryは有効になっていて、
+		　それを別のプロセスが共有したあと、元のプロセスは終了するのか…。なんぞこれ…。
+		
+	・評価関数の読み込みに失敗した、駒得だけの評価関数のはずの思考エンジンに負けているのは何なのか
+		→　local-game-serverに棋譜を出力させてチェック
+
+			lose,startpos moves 3i3h 8c8d 2g2f 3c3d 6i7h 8d8e 7g7f 8e8f 8g8f 8b8f 2f2e 4a3b 2e2d 2c2d 2h2d 8f7f 8h2b+ 3a2b B*7g 2b2c 2d2c+ 3b2c 7g1a+ P*8h 1a8h P*2h 8h9h 7f7d L*7f 7d4d S*5e 4d9d P*2d 2c2d P*7d 2h2i+ 7d7c+ N*8f 7c6c 8f9h+ 7f7a+ B*9e 8i7g 6a7a P*7b 7a8b P*8c 8b8c 9g9f 9e8f 9i9h R*9i 6c5c 8f7g+ 5i4h P*5b 5e6f 7g7h S*4b 5a6a 7i7h 9i7i+ 7h7g L*7d B*6c 5b5c 3h2i 7d7g+ 4b5c+ G*6b 7b7a+ 6a7a 5c6b 7a6b 6c8a+ 7g6g N*6e 7i8h P*6h 8h6h 4h3i P*7b P*2h 6g6f P*6i 6h6i G*5i 6i8i N*7e N*6g 5i5h B*7f 7e8c+ 8i8c G*8b 8c8i 8a7b 6b5b 7b9d 9c9d R*2b B*4b 2b2a+ 7f6e 2a9a N*5e L*5f 6f5f 5g5f S*6i 5h4h 4b6d L*6f 5e4g 3i3h N*2f 3h4g S*4f 4g3f 4f3g+ 4h3g L*3e 3f4g 3e3g+ 4g5g S*4f 5g6h 8i7h
+			lose,startpos moves 5g5f 7a6b 7g7f 5c5d 7i6h 5a4b 3i4h 3c3d 6h7g 3a3b 5i6h 4b3a 6h7h 7c7d 2g2f 6c6d 2f2e 8a7c 9g9f 2b3c 7h7i 1c1d 4i5h 1d1e 2h2f 7c8e 7g6f 6d6e 6f6e 3c8h+ 7i8h B*4d 6g6f 8b9b 2f2h 4d6f 8h9h 7d7e 6e7d 8e7g 8i7g 6f7g+ 7d8c N*6f N*8i 7g7f 8c9b+ 9a9b P*7g 7f9d 5h5g S*7h 5g6f 7h6i N*8f 9d7b B*6d 3a2b 2e2d 2c2d 4h5i G*7h 5i5h 6i5h 2h5h S*6i 5h2h P*8h S*6g 8h8i+ P*2c 2b2c 6g7h 6i7h R*2g 8i9i 9h9i L*2e P*2f N*3e 2f2e 3e2g+ 2e2d 2c1d 2h7h R*6i G*7i 6i6f+ 6d9a+ S*6g 7h9h 6f7g S*7h 6g7h+ 7i7h 7g4g L*7d 7b8c P*6c 6b5c S*8a 4g4i 9i8h 4i2i 8a9b N*8e L*7i 8c8d 9a7c 8d7c 7d7c+ S*9g 9h9g B*2b S*5e 8e9g+ 8h9g 2i1i N*6e L*7g 7h8h 1i7i 8h9h G*9i 9f9e 9i9h 9g9f P*8d B*5h 1d2d 8f7d R*9g 9f8f G*8e 5h8e 9g8g+ 8f7e 8g8e 7e6f 7i6h G*6g B*4h
+
+		→　そこそこ激しい戦型になっているので仕方ないのか。
+		→　定跡32手目までにするのやめたほうがいいのか…。序盤がばらけることより、変な戦型で決着がついて勝率が5割に寄る
+			デメリットのほうが大きいのでは…。
+		→　100局に5局ぐらいがノイズになってしまうと、勝率で5%ぐらい計算が違ってくるか..これはでかいか…。
+
+	・local-game-serverに子プロセスの終了判定のコード追加。
+	・local-game-server、プロセスの起動に失敗したときのコード追加。
+
+	・探索ノード数を表示させてみて、一定値を示しているかの調査
+	→　まあいいや。負荷率がきちんとしている以上、そこはいま問題ではないだろう。
+
+	・置換表サイズによる差の計測
+
+		// hash 16MB
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/Apery20160505  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 0 { 100 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['100']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 0 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+		finish 3895 - 70 - 6035(39.22% R-76.07)
+
+		// hash 128MB
+		c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/Apery20160505  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 1 { 100 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['100']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 1 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+		finish 4179 - 95 - 5726(42.19% R-54.71)
+
+		// hash 256MB
+		final result : 
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Haku20160731
+		byoyomi = 100 ,  3820 - 79 - 6101(38.5% R-81.34)
+
+
+	置換表サイズの差ではなく、3%ぐらいはゴミ定跡を掴まされた差が出ると考えるのが自然か。
+	ゴミ定跡を掴まされて勝率50%に寄ると仮定すると本来のR差は76以上のはずだから、定跡を短くしたときに、そうなるはずだが…。
+
+	置換表サイズが大きくなる ≒ 探索効率がよくなる　≒　持ち時間が増えたときと同じ
+	　なので、R差が開く傾向にあるのか..。
+
+	・book moves = 16
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Haku20160731
+		byoyomi = 100 ,  3945 - 85 - 5970(39.79% R-71.97)
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160730
+		threads = 40 , loop = 10000 , numa = 0 , byoyomi = 500
+		389 - 8 - 1443(21.23% R-227.73)
+		→　おかしい。何かおかしいところを引いてくるのか？
+			hash size    :  24
+			book_moves   :  16
+		→　hash size間違えたのか。うむむむ..。この差は何なのか。棋譜全部調べたほうがいいな。
+		→　メモリが足りなかったわけではなさそうなのだが…。
+
+		// book_moves = 24
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160730
+		byoyomi = 500 ,  417 - 15 - 568(42.34% R-53.68)
+
+		置換表サイズをおかしくしたときに評価関数のメモリを破壊して、
+		全プロセスでおかしくなっている可能性ってないのかな。
+		・hash size 24MBでシミュレーションしてみる。
+		・置換表のメモリ、readonlyに出来るか試す。
+		・メモリ共有、40HTで読み込み中に別のスレッドが壊す/使いはじめるということはあるか?
+
+		// hash 24MB , bookmoves = 16
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160730
+		byoyomi = 500 ,  417 - 9 - 574(42.08% R-55.51)
+
+		// hash 16MB , bookmoves = 24
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160730
+		byoyomi = 1000 ,  397 - 9 - 594(40.06% R-70.0)
+
+		メモリテストしたほうが良いか？
+		→　メモリ、問題なかった。
+
+		Aperyの新バイナリのテスト。
+
+		hash size    :  16
+		book_moves   :  24
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160730
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160803
+		byoyomi = 100 ,  5464 - 83 - 4453(55.1% R35.54)
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160730
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160803
+		byoyomi = 300 ,  5409 - 115 - 4476(54.72% R32.89)
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160730
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160803
+		byoyomi = 100 ,  572 - 8 - 420(57.66% R53.66)
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Apery20160730
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160803
+		byoyomi = 300 ,  532 - 11 - 457(53.79% R26.4)
+
+
+		Apery20160803、強くなってない可能性が微レ存。
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Haku20160731
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160803
+		byoyomi = 100 ,  5697 - 69 - 4234(57.37% R51.56)
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Haku20160731
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160803
+		byoyomi = 300 ,  5486 - 79 - 4435(55.3% R36.94)
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Haku20160731
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160803
+		byoyomi = 100 ,  565 - 6 - 429(56.84% R47.84)
+
+		engine1 = exe\YaneuraOuV350.exe , eval = eval/Haku20160731
+		engine2 = exe\YaneuraOuV350.exe , eval = eval/Apery20160803
+		byoyomi = 300 ,  558 - 4 - 438(56.02% R42.06)
+
+
+■　2016/08/03
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/179_0042G_V3  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 0 { 1000 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['1000']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/179_0042G_V3
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+		finish 3839 - 136 - 6025(38.92% R-78.3)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/179_0042G_V3  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 0 { 300 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['300']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/179_0042G_V3
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 0 , byoyomi = 300
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+		finish 3880 - 97 - 6023(39.18% R-76.39)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/Apery20160730  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 1 { 300 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['300']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/Apery20160730
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 1 , byoyomi = 300
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+		finish 4316 - 70 - 5614(43.46% R-45.68)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/Apery20160730  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 0 { 100 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['100']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/Apery20160730
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 0 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+		finish 4081 - 68 - 5851(41.09% R-62.59)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/Apery20160505  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 1 { 1000 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['1000']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 1 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+		finish 3629 - 138 - 6233(36.8% R-93.96)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/Apery20160505  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 0 { 400 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['400']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 0 , byoyomi = 400
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+		finish 3732 - 106 - 6162(37.72% R-87.11)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/Apery20160505  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 1 { 300 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['300']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 1 , byoyomi = 300
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+		finish 3728 - 103 - 6169(37.67% R-87.5)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347RR2.exe eval/Apery20160505  exe\YaneuraOuV347RR2.exe eval/Haku20160731 40 10000 0 { 100 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['100']
+		evaldirs     :  ['eval/Haku20160731']
+		engine1 = exe\YaneuraOuV347RR2.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347RR2.exe , eval = eval/Haku20160731
+		threads = 40 , loop = 10000 , numa = 0 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+		finish 3895 - 70 - 6035(39.22% R-76.07)
+
+
+
+・benchコマンドの引数の説明が、USI拡張コマンド.txtのほう、間違っていたので修正。(uuunuuunさんより指摘あり)
+	https://twitter.com/uuunuuun1/status/760324601637253120
+
+・新しいPCのほう、自己対戦、おかしな結果が…。ああ、評価関数がないからか。
+	Error、伝達したほうが良いのでは…。うーむ..
+	finish 986 - 1 - 13(98.7% R751.97)
+	評価関数の読み込み失敗しているのに1.3%は勝つんだな…。なんぞこれ…。
+
+・よしよし、新しいPC、うまく動いているようだ。
+
+
+■　2016/08/02
+
+・YaneuraOuV347TC
+
+  if (limits.rtime)
+  {
+	  auto r = limits.rtime;
+	  remain_time = minimumTime = optimumTime = maximumTime = r;
+	  return;
+  }
+
+・YaneuraOuV347RR.exe
+
+  if (limits.rtime)
+  {
+	  auto r = limits.rtime;
+	  r += (int)prng.rand((int)std::min(r * 1.5f , r * 10.0f / (ply)));
+
+	  remain_time = minimumTime = optimumTime = maximumTime = r;
+	  return;
+  }
+
+これで0.1秒、0.3秒を1万局やって、どうなるかを検証する。
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347rr.exe eval/Apery20160505  exe\YaneuraOuV347rr.exe eval/Apery20160730 40 10000 1 { 100 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['100']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347rr.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347rr.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 1 , byoyomi = 100
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+	finish 4860 - 86 - 5054(49.02% R-6.8)
+
+	もっと微差になった。そんな馬鹿な…。
+	ああ、r * 1.5fではなく、こうすべきなのか。そうか。
+	  if (ply)
+		  r += (int)prng.rand((int)std::min(r * 0.5f, r * 10.0f / (ply)));
+
+		→ rr2
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347tc.exe eval/Apery20160505  exe\YaneuraOuV347tc.exe eval/Apery20160730 40 10000 1 { 100 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['100']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347tc.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347tc.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 1 , byoyomi = 100
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+	finish 4796 - 74 - 5130(48.32% R-11.7)
+
+	c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347tc.exe eval/Apery20160505  exe\YaneuraOuV347tc.exe eval/Apery20160730 40 10000 0 { 300 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['300']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347tc.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347tc.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 0 , byoyomi = 300
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+	finish 4568 - 85 - 5347(46.07% R-27.35)
+
+	tcでも微差。0.1秒が厳しすぎるのか…。
+
+	自己対戦フレームワークのバグというよりは、思考エンジン側の問題と、自己対戦フレームワークのタスクの処理の問題とがあるような気はする。
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347rr.exe eval/Apery20160505  exe\YaneuraOuV347rr.exe eval/Apery20160730 40 10000 1 { 300 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['300']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347rr.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347rr.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 1 , byoyomi = 300
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+	finish 4524 - 97 - 5379(45.68% R-30.07)
+
+	c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347rr2.exe eval/Apery20160505  exe\YaneuraOuV347rr2.exe eval/Apery20160730 40 10000 0 { 300 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['300']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347rr2.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347rr2.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 0 , byoyomi = 300
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+	finish 4509 - 102 - 5389(45.55% R-30.97)
+
+	rr2でいいや。
+
+	しかし持ち時間で勝率がここまで変わるのは、Stockfish7の探索部の性質のような気もする。
+	1秒未満のテストが信用ならないのはツライ。
+
+	40コアにするのがいかんのか？20コアでテストしなおす。
+
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347rr2.exe eval/Apery20160505  exe\YaneuraOuV347rr2.exe eval/Apery20160730 20 10000 1 { 100 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['100']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347rr2.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347rr2.exe , eval = eval/Apery20160730
+	threads = 20 , loop = 10000 , numa = 1 , byoyomi = 100
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 20 , enginenuma 1 , go btime 10000 , quit
+	finish 4640 - 85 - 5275(46.8% R-22.28)
+
+	c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347rr2.exe eval/Apery20160505  exe\YaneuraOuV347rr2.exe eval/Apery20160730 20 10000 0 { 300 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['300']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347rr2.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347rr2.exe , eval = eval/Apery20160730
+	threads = 20 , loop = 10000 , numa = 0 , byoyomi = 300
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 20 , enginenuma 0 , go btime 10000 , quit
+	finish 4487 - 98 - 5415(45.31% R-32.66)
+
+	20コアにしてもほぼ変わらず。うーん..
+
+
+
+■　2016/08/01
+
+
+・持ち時間ごとに勝率は一定値に近いから、自己対戦フレームワークの問題ではなさげ。
+	rtimeで、揺らしたときに、短い時間だと勝率への影響が大きいというのはあるのか。
+
+
+	c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/Apery20160730 40 10000 0 { 1000 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['1000']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 0 , byoyomi = 1000
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+	finish 4168 - 125 - 5707(42.21% R-54.59)
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/Apery20160730 40 1000 1 { 1000 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['1000']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 1000 , numa = 1 , byoyomi = 1000
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+	finish 407 - 11 - 582(41.15% R-62.13)
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/Apery20160730 40 10000 1 { 500 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['500']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 1 , byoyomi = 500
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+	finish 4393 - 106 - 5501(44.4% R-39.07)
+
+	c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/Apery20160730 40 10000 1 { 300 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['300']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 1 , byoyomi = 300
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 10000 , quit
+	finish 4552 - 96 - 5352(45.96% R-28.13)
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/Apery20160730 40 10000 0 { 300 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['300']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 10000 , numa = 0 , byoyomi = 300
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 10000 , quit
+	finish 4535 - 122 - 5343(45.91% R-28.48)
+
+
+
+・自己対戦フレームワーク、一度、棋譜全部調べたほうが良いのでは。
+　→　ソースコードレベルではおかしくないように思う。
+　→　棋譜をひとつひとつ観察する。
+
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/Apery20160730 40 1000 1 { 1000 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['1000']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 1000 , numa = 1 , byoyomi = 1000
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+	finish 407 - 11 - 582(41.15% R-62.13)
+
+
+	c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160722  exe\YaneuraOuV347.exe eval/Apery20160730 40 1000 0 { 1000 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['1000']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+	finish 536 - 13 - 451(54.31% R30.0)
+
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/179_0042G_V3  exe\YaneuraOuV347.exe eval/Apery20160730 40 1000 1 { 1000 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['1000']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/179_0042G_V3
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 1000 , numa = 1 , byoyomi = 1000
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+	finish 441 - 13 - 546(44.68% R-37.1)
+
+
+	c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/Apery20160730 40 1000 0 { 1000 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['1000']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+	finish 512 - 19 - 469(52.19% R15.24)
+	→　この結果がおかしい。こんなことってあるのか…。
+
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160727  exe\YaneuraOuV347.exe eval/Apery20160730 40 1000 1 { 1000 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['1000']
+	evaldirs     :  ['eval/Apery20160730']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160727
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160730
+	threads = 40 , loop = 1000 , numa = 1 , byoyomi = 1000
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+	finish 456 - 16 - 528(46.34% R-25.47)
+
+
+	c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160722  exe\YaneuraOuV347.exe eval/Apery20160727 40 1000 0 { 1000 } 
+	home         :  \\WS2012_860C_YAN\yanehome\
+	byoyomi_list :  ['1000']
+	evaldirs     :  ['eval/Apery20160727']
+	engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+	engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160727
+	threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+	\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+	finish 433 - 23 - 544(44.32% R-39.64)
+
+
+■　2016/07/31
+
+・Aperyの新バイナリ、結論
+
+	1スレッド1手1秒1000局。
+
+	eval/Apery20160505
+	eval/Apery20160727
+	429 - 19 - 552(43.73% R-43.79)
+
+	eval/Apery20160722
+	eval/Apery20160727
+	433 - 23 - 544(44.32% R-39.64)
+
+定跡で散らしているので勝率5割に引き寄せられるというのはある。
+実際はこの倍ぐらいのR差があるのかも。
+
+
+・局面生成、最後の出力がいい加減なので規定の数を少しオーバーしたり、足りなかったりしているような？
+
+・局面生成のときにこの変数参照してなかった…。削除。
+	// 生成したい局面の数
+	u64 sfen_count_limit;
+
+・局面生成のwriterの終了条件、こうすべきなのか？
+		while (!finished || sfen_buffers_pool.size())
+	うーむ、難しい。
+
+
+#if 0
+				{
+					// メモリにコピーしてでも一気に書きだしたほうが速いかも。
+					// →　変わらなかった。
+					size_t one_size = buffers[0]->size() * sizeof(PackedSfenValue);
+					size_t size = buffers.size()*one_size;
+					u8* p = new u8[size];
+					for (size_t i = 0; i < buffers.size(); ++i)
+						memcpy(p + one_size*i, &(*buffers[i])[0] , one_size);
+
+					fs.write((const char*)p, size);
+					delete[] p;
+				}
+#endif
+
+		// 書きだした局面の数
+		u64 sfen_write_count = 0;
+
+	これ初期化忘れてた。修正した。
+
+■　2016/07/30
+
+・局面生成、規定回数になっていないのに終了するバグがあるようだ。
+	→　わかった。メモリ、ガバガバ食っとる。
+	→　書き出しが間に合わないという問題ではなさそう。
+	→　圧縮ドライブに対するflushがいかんのか。
+
+		805000 sfens , at Sat Jul 30 19:44:50 2016
+		[38]
+		1005000 sfens , at Sat Jul 30 19:44:58 2016
+		[15]
+		1205000 sfens , at Sat Jul 30 19:45:05 2016
+		[27][39]
+		1405000 sfens , at Sat Jul 30 19:45:16 2016
+		[57]
+		1605000 sfens , at Sat Jul 30 19:45:31 2016
+
+		1805000 sfens , at Sat Jul 30 19:45:44 2016
+		[101]
+		2005000 sfens , at Sat Jul 30 19:46:02 2016
+
+		2205000 sfens , at Sat Jul 30 19:46:14 2016
+		[152]
+		2405000 sfens , at Sat Jul 30 19:46:23 2016
+
+		2605000 sfens , at Sat Jul 30 19:46:38 2016
+
+	圧縮関係なしに、普通に断片的なwrite自体が間に合わない。なんだこれ。
+
+	NICがぶら下がっているほうのNUMAとそうでないNUMAとで差が出る感じなのかな。
+	どうしようもないな…。ネットワークドライブ、RAID1にしているのも関係するんだろうな。
+
+	ネットワークドライブ上にSSDぶら下げるか。
+
+	YANEHOME
+		\\WS2012_860C_YAN\yanehome
+		↓
+		\\YANE4771K\yanehome
+
+		Node0がネットワークまわり遅いというのはあるようだ。ふーん..。
+		余計なルーティングをしている可能性もあったりして？
+
+		やはりネットワークドライブではなく、node0のネットワーク性能が悪いというのが原因のようだ。
+		ネットワークドライバ、更新。
+		→　めっちゃマシになった。なんぞこれ…。
+		→　でもまだwrite間に合わない。うーん..
+
+		start /NODE %EXECUTOR_NUMBER% /B /WAIT /D %YANEHOME% %YANEHOME%\exe\YaneuraOuV347.exe evaldir %EVAL_DIR% , threads %HT_CORES% , hash 4096 , gensfen depth %DEPTH% loop %LOOP_MAX% eval_limit %EVAL_LIMIT% file %YANEHOME%\gen_sfen\%BUILD_NUMBER%.bin , quit
+		↓
+		start /NODE %EXECUTOR_NUMBER% /B /WAIT /D %YANEHOME% %YANEHOME%\exe\YaneuraOuV347.exe evaldir %EVAL_DIR% , threads %HT_CORES% , hash 4096 , gensfen depth %DEPTH% loop %LOOP_MAX% eval_limit %EVAL_LIMIT% file %WORKSPACE%\%BUILD_NUMBER%.bin , quit
+		start /NODE %EXECUTOR_NUMBER% /B /WAIT move %WORKSPACE%\%BUILD_NUMBER%.bin %YANEHOME%\gen_sfen\
+
+		仕方がないのでローカルで生成してコピーするしかなさげ。うーん..そういうものか…。
+		ローカルのSSD、ギリギリだな、こりゃ。
+
+		なんにせよ、高負荷時のネットワーク性能が悪いことには違いないな。
+		ローカルのSSD、圧縮ドライブにして運用したほうがマシか。
+		JenkinsのJobでビルド後の処理としてworkspaceのdelete追加。
+
+		あるいは、書き込みが一定量溜まったら、worker止めて書き込みに専念したほうがいいのかも。
+		→　ローカルのほうが書き込みも速いのでネットワークドライブ、使わずに済むなら使わずに済ませたいな…。
+
+
+■　2016/07/29
+
+・depth 3, eval_limit 2000にして、棋力がサチるまでまずは回し続けるのが良いのでは。
+	depth 3でサチってから、eval_limit変えたり、学習方法変えたりしたほうが良いのでは。
+	それでサチったら、depthを4,5,6のように段階的に上げていく。闇雲に6にしない。これ大切。
+	学習中は棋譜生成しても仕方がないし、対局も出来ないから、PCが遊ぶのか…。そうか…。
+	なら、80億と言わず、40億でいいのかも知れない。
+
+	SGD、結局、減衰率がないから、10億ぐらいでサチっている可能性が…。
+	まあとりあえず80億生成してから考える。
+
+	学習方法、何通りか変えて並行して学習させるのがいいかも。
+
+・gensfenのときに評価値の上限はeval_limitとして指定できるように変更。
+
+・Aperyの教師局面生成部について
+
+		usi.cppの248行目からがそれ。
+		> void make_teacher(std::istringstream& ssCmd) {
+
+		1) 探索深さ = depth 6
+		2) goコマンドで実行するのでスレッド並列には出来ない。
+		 GUIのほうでプロセスを並行スレッド数だけ起動する仕組み。
+		 さすがにメモリ消費しすぎるような…。
+
+		3) 評価値2000で打ち切り
+		4) 400手目まで
+
+		ここ手数が長いほうが終盤の入玉がらみの指し手があって、良いのかも知れない。
+
+		5) 2駒入れ替えではなく、ランダムムーブ
+		・玉の24近傍へのランダム移動(多め)
+		・合法手のなかからランダムに1つ移動
+
+		6) ランダムムーブの採択確率を、ランダムムーブをするごとに 1/2 にして減衰させていく。
+		(終盤ではランダムムーブは生じにくくなり、実戦的に起こりやすいような終局図に向かう..たぶん)
+
+		※　4)～6)はさすが。棋力の伸びがサチったら、試してみる価値あり。
+
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160722  exe\YaneuraOuV347.exe eval/Apery20160727 40 1000 0 { 1000 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['1000']
+		evaldirs     :  ['eval/Apery20160727']
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160727
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 433 - 23 - 544(44.32% R-39.64)
+
+		思ったより伸びてるな…。1秒だからか？
+		1000回だと少ないか。
+
+
+・VALUE_MAX_EVALから学習させた件
+
+		弱くなっている気が…。やはり、勝ち付近で極端な値が出るのは交差エントロピーと相性が悪いのかも。
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/179_0042G_V3  exe\YaneuraOuV347.exe eval/learn_8 40 1000 0 { 1000 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['1000']
+		evaldirs     :  ['eval/learn_8/0', 'eval/learn_8/1', 'eval/learn_8/2']
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/179_0042G_V3
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/0
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 516 - 23 - 461(52.81% R19.58)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/179_0042G_V3
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/1
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 521 - 20 - 459(53.16% R22.01)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/179_0042G_V3
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/2
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 495 - 13 - 492(50.15% R1.06)
+
+
+・
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160722  exe\YaneuraOuV347.exe eval/179_0042G_V3 40 1000 0 { 1000 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['1000']
+		evaldirs     :  ['eval/179_0042G_V3']
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/179_0042G_V3
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 504 - 19 - 477(51.38% R9.56)
+
+
+・3億局面生成では落ちなかった。落ちたのは何だったのだ…。メモリ不足か？
+
+・pythonのコード、勝率は小数点以下2桁にして、Rを表示するようにしよう。
+
+		import math
+
+		win = 10
+		lose = 5
+
+		rate = win/float(win+lose)
+
+		print round(rate* 100,2)
+		print round(-400*math.log(1/rate-1,10),2)
+
+	こうか？
+
+		if total != 0 :
+			win_rate = win / float(win+lose)
+		else:
+			win_rate = 0
+		print "finish " + str(win) + " - " + str(draw) + " - " + str(lose) + "(" + str(round(win_rate*100,2)) + "% R" + str(round(-400*math.log(1/win_rate-1,10),2)) + ")\n"
+	
+
+・
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/Apery20160727 40 1000 0 { 1000 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['1000']
+		evaldirs     :  ['eval/Apery20160727']
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/Apery20160727
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 429 - 19 - 552(43.7308868502%)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>exit 0 
+		Finished: SUCCESS
+
+		ユーザーyaneenが実行
+		2498a でビルドします。 ワークスペース: c:/jenkins/workspace/yanejob/連続自己対戦
+		[連続自己対戦] $ cmd /c call C:\Users\yaneen\AppData\Local\Temp\hudson4761567536305457594.bat
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/learn_8 40 1000 1 { 1000 3000 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['1000', '3000']
+		evaldirs     :  ['eval/learn_8/0', 'eval/learn_8/1', 'eval/learn_8/2']
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/0
+		threads = 40 , loop = 1000 , numa = 1 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+		finish 455 - 8 - 537(45.8669354839%)
+
+		threads = 40 , loop = 1000 , numa = 1 , byoyomi = 3000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+		finish 474 - 19 - 507(48.3180428135%)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/1
+		threads = 40 , loop = 1000 , numa = 1 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+		finish 456 - 13 - 531(46.2006079027%)
+
+		threads = 40 , loop = 1000 , numa = 1 , byoyomi = 3000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+		finish 465 - 14 - 521(47.1602434077%)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/2
+		threads = 40 , loop = 1000 , numa = 1 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+		finish 463 - 5 - 532(46.5326633166%)
+
+		threads = 40 , loop = 1000 , numa = 1 , byoyomi = 3000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 1000 , quit
+		finish 467 - 15 - 518(47.4111675127%)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>exit 0 
+		Finished: SUCCESS
+
+	・VALUE_MAX_EVALにすると過学習している気がする。学習対象局面が少なすぎるからかも。
+	・しかしこれだけでは傾向がわからない。10個ぐらいないと。
+	・1秒と3秒はそんなに変わらないようなので1秒のほうだけでもとりあえずは良いかも。
+	・rtimeで時間ばらけるのに意味があるだろうか…。まあいいか。
+	・ゼロベクトルから学習させたとは言え、Apery20160505と5%も変わらないとかやばすぎ。
+	・NUMA1で、裏で局面生成していたこととも関係するのかも。そうでもないか。
+
+
+		ユーザーyaneenが実行
+		2498a でビルドします。 ワークスペース: c:/jenkins/workspace/yanejob/連続自己対戦@2
+		[連続自己対戦@2] $ cmd /c call C:\Users\yaneen\AppData\Local\Temp\hudson3989661511375186194.bat
+
+		c:\jenkins\workspace\yanejob\連続自己対戦@2>start /B /WAIT /NODE 0 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160722  exe\YaneuraOuV347.exe eval/learn_8 40 1000 0 { 1000 3000 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['1000', '3000']
+		evaldirs     :  ['eval/learn_8/0', 'eval/learn_8/1', 'eval/learn_8/2']
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/0
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 596 - 21 - 383(60.8784473953%)
+
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 3000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 585 - 19 - 396(59.6330275229%)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/1
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 611 - 9 - 380(61.6548940464%)
+
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 3000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 598 - 22 - 380(61.145194274%)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/2
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 1000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 589 - 16 - 395(59.8577235772%)
+
+		threads = 40 , loop = 1000 , numa = 0 , byoyomi = 3000
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 0 , go btime 1000 , quit
+		finish 595 - 19 - 386(60.6523955148%)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦@2>exit 0 
+		Finished: SUCCESS
+
+	・Apery20160722に対して負けすぎ。
+
+
 ■ 2016/07/28
+
+・
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160505  exe\YaneuraOuV347.exe eval/learn_8 40 500 1 { 100 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['100']
+		evaldirs     :  ['eval/learn_8/0', 'eval/learn_8/1', 'eval/learn_8/2']
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/0
+		threads = 40 , loop = 500 , numa = 1 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 500 , quit
+		finish 253 - 2 - 245(50.8032128514%)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/1
+		threads = 40 , loop = 500 , numa = 1 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 500 , quit
+		finish 226 - 4 - 270(45.564516129%)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160505
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/2
+		threads = 40 , loop = 500 , numa = 1 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 500 , quit
+		finish 232 - 4 - 264(46.7741935484%)
+
+
+		c:\jenkins\workspace\yanejob\連続自己対戦>start /B /WAIT /NODE 1 c:/python27/python.exe \\WS2012_860C_YAN\yanehome\script\engine_invoker.py \\WS2012_860C_YAN\yanehome exe\YaneuraOuV347.exe eval/Apery20160722  exe\YaneuraOuV347.exe eval/learn_8 40 500 1 { 100 } 
+		home         :  \\WS2012_860C_YAN\yanehome\
+		byoyomi_list :  ['100']
+		evaldirs     :  ['eval/learn_8/0', 'eval/learn_8/1', 'eval/learn_8/2']
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/0
+		threads = 40 , loop = 500 , numa = 1 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 500 , quit
+		finish 242 - 3 - 255(48.6921529175%)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/1
+		threads = 40 , loop = 500 , numa = 1 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 500 , quit
+		finish 237 - 4 - 259(47.7822580645%)
+
+		engine1 = exe\YaneuraOuV347.exe , eval = eval/Apery20160722
+		engine2 = exe\YaneuraOuV347.exe , eval = eval/learn_8/2
+		threads = 40 , loop = 500 , numa = 1 , byoyomi = 100
+		\\WS2012_860C_YAN\yanehome\\exe\local-game-serverV347.exe , booksfenfile \\WS2012_860C_YAN\yanehome\book/records1.sfen , threads 40 , enginenuma 1 , go btime 500 , quit
+		finish 252 - 2 - 246(50.6024096386%)
+
+	0.1秒だからからか、結果が安定してなくて何もわからないな、これ。
+
 
 ・1億局面生成のjob、片方途中で落ちてた。プロセスが落ちたのだろうか。
 	VALUE_EVAL_MAXまで生成していることに関係しているのかも。

@@ -22,6 +22,7 @@
 //
 // 置換表を無効化するので通常対局は出来ない。learnコマンド用の実行ファイル専用。
 //                       ~~~~~~~~~~~~~~~~~~
+// ※　色々実験中なので使わないように。
 
 //#define LEARN_YANEURAOU_2016_LATE
 
@@ -188,9 +189,6 @@ typedef float LearnFloatType;
 
 // 2駒の入れ替えを5手に1回ぐらいの確率で行なう。
 #define USE_SWAPPING_PIECES
-
-// その局面で探索した評価値がこれ以上になった時点でその対局は終了する。
-#define GEN_SFENS_EVAL_LIMIT VALUE_MAX_EVAL
 
 // タイムスタンプの出力をこの回数に一回に抑制する。
 // スレッドを論理コアの最大数まで酷使するとコンソールが詰まるので…。
