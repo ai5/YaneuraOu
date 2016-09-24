@@ -95,7 +95,11 @@ struct Thread
   // このスレッドに関して、終了した反復深化の深さ(Depth型ではないので注意)
   int completedDepth;
 
-#if defined(USE_MOVE_PICKER_2015) || defined( USE_MOVE_PICKER_2016Q2 )
+  // 探索でsearch()が呼び出された回数を集計する用。
+  std::atomic_bool resetCalls;
+  int callsCnt;
+
+#if defined( USE_MOVE_PICKER_2015 ) || defined( USE_MOVE_PICKER_2016Q2 ) || defined( USE_MOVE_PICKER_2016Q3 )
   // ある種のMovePickerではオーダリングのために、
   // スレッドごとにhistoryとcounter movesのtableを持たないといけない。
 
@@ -103,13 +107,15 @@ struct Thread
   MoveStats counterMoves;
 #endif
 
-#if defined( USE_MOVE_PICKER_2016Q2)
+#if defined( USE_MOVE_PICKER_2016Q2 ) || defined( USE_MOVE_PICKER_2016Q3 )
   FromToStats fromTo;
 #endif
 
-  // 探索でsearch()が呼び出された回数を集計する用。
-  std::atomic_bool resetCalls;
-  int callsCnt;
+#if defined( YANEURAOU_2016_LATE_ENGINE )
+  // コア数が多いか、長い持ち時間においては、スレッドごとにCounterMoveHistoryを確保したほうが良い。
+  // cf. https://github.com/official-stockfish/Stockfish/commit/5c58d1f5cb4871595c07e6c2f6931780b5ac05b5
+  CounterMoveHistoryStats counterMoveHistory;
+#endif
 
   // ------------------------------
   //       constructor ..

@@ -19,8 +19,7 @@ struct TTEntry {
   Value eval() const { return (Value)eval16; }
 #endif
 
-  // Stockfish、ここONE_PLY掛かってなくておかしい。掛けるべき。
-  Depth depth() const { return (Depth)((int)depth8 * ONE_PLY); }
+  Depth depth() const { return (Depth)(depth8 * int(ONE_PLY)); }
   Bound bound() const { return (Bound)(genBound8 & 0x3); }
 
   uint8_t generation() const { return genBound8 & 0xfc; }
@@ -38,6 +37,9 @@ struct TTEntry {
     uint8_t gen)
   {
     ASSERT_LV3((-VALUE_INFINITE < v && v < VALUE_INFINITE) || v == VALUE_NONE);
+
+	// ToDo: 探索部によってはVALUE_INFINITEを書き込みたいのかも知れない…。うーん。
+	//  ASSERT_LV3((-VALUE_INFINITE <= v && v <= VALUE_INFINITE) || v == VALUE_NONE);
 
     // このif式だが、
     // A = m!=MOVE_NONE
@@ -185,7 +187,7 @@ inline Value value_to_tt(Value v, int ply) {
   ASSERT_LV3(-VALUE_INFINITE < v && v < VALUE_INFINITE);
 
   return  v >= VALUE_MATE_IN_MAX_PLY ? v + ply
-    : v <= VALUE_MATED_IN_MAX_PLY ? v - ply : v;
+		: v <= VALUE_MATED_IN_MAX_PLY ? v - ply : v;
 }
 
 // value_to_tt()の逆関数
@@ -193,8 +195,8 @@ inline Value value_to_tt(Value v, int ply) {
 inline Value value_from_tt(Value v, int ply) {
 
   return  v == VALUE_NONE ? VALUE_NONE
-    : v >= VALUE_MATE_IN_MAX_PLY ? v - ply
-    : v <= VALUE_MATED_IN_MAX_PLY ? v + ply : v;
+		: v >= VALUE_MATE_IN_MAX_PLY ? v - ply
+		: v <= VALUE_MATED_IN_MAX_PLY ? v + ply : v;
 }
 
 // PV lineをコピーする。
@@ -202,9 +204,9 @@ inline Value value_from_tt(Value v, int ply) {
 // 番兵として末尾はMOVE_NONEにすることになっている。
 inline void update_pv(Move* pv, Move move, Move* childPv) {
 
-  for (*pv++ = move; childPv && *childPv != MOVE_NONE; )
-    *pv++ = *childPv++;
-  *pv = MOVE_NONE;
+	for (*pv++ = move; childPv && *childPv != MOVE_NONE; )
+		*pv++ = *childPv++;
+	*pv = MOVE_NONE;
 }
 
 extern TranspositionTable TT;

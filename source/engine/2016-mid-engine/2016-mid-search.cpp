@@ -400,7 +400,7 @@ namespace YaneuraOu2016Mid
 	  // さらに、1手前で置換表の指し手が反駁されたときは、追加でペナルティを与える。
 	  // 1手前は置換表の指し手であるのでNULL MOVEではありえない。
 	  if ((ss - 1)->moveCount == 1
-		  && !pos.captured_piece_type())
+		  && !pos.captured_piece())
 	  {
 		  // 直前がcaptureではないから、2手前に動かした駒は捕獲されずに盤上にあるはずであり、
 		  // その升の駒を盤から取り出すことが出来る。それ以上前の駒はあるかどうかわからないが…。
@@ -413,13 +413,13 @@ namespace YaneuraOu2016Mid
 		  // ペナルティを与える。
 
 		  if ((ss - 2)->counterMoves)
-			  (ss - 2)->counterMoves->update(prevPc, prevSq, -bonus - 2 * (depth + ONE_PLY) / ONE_PLY - 1);
+			  (ss - 2)->counterMoves->update(prevPc, prevSq, -bonus - 2 * (depth + 1) / ONE_PLY - 1);
 
 		  if ((ss - 3)->counterMoves)
-			  (ss - 3)->counterMoves->update(prevPc, prevSq, -bonus - 2 * (depth + ONE_PLY) / ONE_PLY - 1);
+			  (ss - 3)->counterMoves->update(prevPc, prevSq, -bonus - 2 * (depth + 1) / ONE_PLY - 1);
 
 		  if ((ss - 5)->counterMoves)
-			  (ss - 5)->counterMoves->update(prevPc, prevSq, -bonus - 2 * (depth + ONE_PLY) / ONE_PLY - 1);
+			  (ss - 5)->counterMoves->update(prevPc, prevSq, -bonus - 2 * (depth + 1) / ONE_PLY - 1);
 	  }
   }
 
@@ -567,9 +567,6 @@ namespace YaneuraOu2016Mid
     // -----------------------
     //     eval呼び出し
     // -----------------------
-
-    // 1手詰めで必要なのでこのタイミングで更新しておく。
-    pos.check_info_update();
 
     if (InCheck)
     {
@@ -979,7 +976,10 @@ namespace YaneuraOu2016Mid
 
 	  // このnodeで探索から除外する指し手。ss->excludedMoveのコピー。
 	  Move excludedMove = ss->excludedMove;
-	  auto posKey = excludedMove ? pos.state()->exclusion_key() : pos.state()->key();
+	  // 除外した指し手をxorしてそのままhash keyに使う。
+	  // 除外した指し手がないときは、0だから、xorしても0。
+	  // ただし、hash keyのbit0は手番を入れることになっているのでここは0にしておく。
+	  auto posKey = pos.key() ^ Key(excludedMove << 1);
 
 	  bool ttHit;    // 置換表がhitしたか
 
@@ -1053,9 +1053,6 @@ namespace YaneuraOu2016Mid
 
 	  Move bestMove = MOVE_NONE;
 	  const bool InCheck = pos.checkers();
-
-	  // mate1ply()で必要なのでこのタイミングで更新しておく。
-	  pos.check_info_update();
 
 #ifdef USE_MATE_1PLY_IN_SEARCH
 
@@ -1249,7 +1246,7 @@ namespace YaneuraOu2016Mid
 
 		  // このnodeの指し手としては置換表の指し手を返したあとは、直前の指し手で捕獲された駒による評価値の上昇を
 		  // 上回るようなcaptureの指し手のみを生成する。
-		  MovePicker mp(pos, ttMove, (Value)Eval::CapturePieceValue[pos.captured_piece_type()]);
+		  MovePicker mp(pos, ttMove, (Value)Eval::CapturePieceValue[pos.captured_piece()]);
 
 		  while ((move = mp.next_move()) != MOVE_NONE)
 		  {
@@ -1817,7 +1814,7 @@ namespace YaneuraOu2016Mid
 	  // fail lowを引き起こした前nodeでのcounter moveに対してボーナスを加点する。
 	  else if (depth >= 3 * ONE_PLY
 		  && !bestMove                        // bestMoveが無い == fail low
-		  && !pos.captured_piece_type()
+		  && !pos.captured_piece()
 		  && is_ok((ss - 1)->currentMove))
 	  {
 		  const Square prevSq = to_sq((ss - 1)->currentMove);
@@ -2671,8 +2668,6 @@ namespace Learner
 	// Learner::search(),Learner::qsearch()から呼び出される。
 	void init_for_search(Position pos)
 	{
-		pos.check_info_update();
-
 		// 探索深さ無限
 		auto& limits = Search::Limits;
 		limits.infinite = true;

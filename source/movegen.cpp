@@ -62,7 +62,7 @@ using namespace std;
 // 成らない指し手生成を生成する
 #define MAKE_MOVE_TARGET(target_) { FOREACH_BB(target_,to,{                                      \
   mlist++->move = make_move(from,to) + OurPt(Us,Pt);                                             \
-});}                                                                                           
+});}                                                                                          
                                                                                                
 // 移動させる駒が不明な場合                                                                    
 #define MAKE_MOVE_TARGET_UNKNOWN(target_) { FOREACH_BB(target_,to,{                              \
@@ -119,7 +119,7 @@ template <Piece Pt, Color Us, bool All> struct make_move_target {
         to = from + (Us == BLACK ? SQ_U : SQ_D ); // to = target.pop(); より少し速い
         if (canPromote(Us, to))
         {
-          mlist++->move = make_move_promote(from, to) + OurPt(Us,Pt);
+          mlist++->move = make_move_promote(from, to) + OurProPt(Us,Pt);
           if (All && rank_of(to) != (Us == BLACK ? RANK_1 : RANK_9))
             mlist++->move = make_move(from, to) + OurPt(Us,Pt);
         } else
@@ -826,13 +826,10 @@ ExtMove* generate_checks(const Position& pos, ExtMove* mlist)
     (pos.pieces(Us, ROOK) ) | // ROOK,DRAGONは無条件全域
     (pos.pieces(Us, HDK) & pos.pieces(Us, BISHOP) & check_candidate_bb(Us, ROOK, themKing)); // check_candidate_bbにはROOKと書いてるけど、HORSE
 
-  const CheckInfo& ci = pos.state()->checkInfo;
-  ASSERT_LV1(is_ok(ci.ksq)); // CheckInfoが初期化されていないときはこれが変な値になっているかも。
-
-  const Bitboard y = ci.dcCandidates;
+  const Bitboard y = pos.discovered_check_candidates();
   const Bitboard target =
     (GenType == CHECKS || GenType == CHECKS_ALL) ? ~pos.pieces(Us) :                     // 自駒がない場所が移動対象升
-    (GenType == QUIET_CHECKS || GenType == QUIET_CHECKS_ALL) ? ~pos.pieces() :           // 捕獲の指し手を除外するため駒がない場所が移動対象升
+    (GenType == QUIET_CHECKS || GenType == QUIET_CHECKS_ALL) ? pos.empties() :           // 捕獲の指し手を除外するため駒がない場所が移動対象升
       ALL_BB; // Error!
 
   // yのみ。ただしxかつyである可能性もある。
@@ -866,19 +863,19 @@ ExtMove* generate_checks(const Position& pos, ExtMove* mlist)
 
   Hand h = pos.hand_of(Us);
   if (hand_exists(h, PAWN))
-    mlist = GenerateCheckDropMoves<Us, PAWN>()(pos, ci.checkSq[PAWN] & empties,mlist);
+    mlist = GenerateCheckDropMoves<Us, PAWN>()(pos, pos.check_squares(PAWN) & empties,mlist);
   if (hand_exists(h, LANCE))
-    mlist = GenerateCheckDropMoves<Us, LANCE>()(pos, ci.checkSq[LANCE] & empties, mlist);
+    mlist = GenerateCheckDropMoves<Us, LANCE>()(pos, pos.check_squares(LANCE) & empties, mlist);
   if (hand_exists(h, KNIGHT))
-    mlist = GenerateCheckDropMoves<Us, KNIGHT>()(pos, ci.checkSq[KNIGHT] & empties, mlist);
+    mlist = GenerateCheckDropMoves<Us, KNIGHT>()(pos, pos.check_squares(KNIGHT) & empties, mlist);
   if (hand_exists(h, SILVER))
-    mlist = GenerateCheckDropMoves<Us, SILVER>()(pos, ci.checkSq[SILVER] & empties, mlist);
+    mlist = GenerateCheckDropMoves<Us, SILVER>()(pos, pos.check_squares(SILVER) & empties, mlist);
   if (hand_exists(h, GOLD))
-    mlist = GenerateCheckDropMoves<Us, GOLD>()(pos, ci.checkSq[GOLD] & empties, mlist);
+    mlist = GenerateCheckDropMoves<Us, GOLD>()(pos, pos.check_squares(GOLD) & empties, mlist);
   if (hand_exists(h, BISHOP))
-    mlist = GenerateCheckDropMoves<Us, BISHOP>()(pos, ci.checkSq[BISHOP] & empties, mlist);
+    mlist = GenerateCheckDropMoves<Us, BISHOP>()(pos, pos.check_squares(BISHOP) & empties, mlist);
   if (hand_exists(h, ROOK))
-    mlist = GenerateCheckDropMoves<Us, ROOK>()(pos, ci.checkSq[ROOK] & empties, mlist);
+    mlist = GenerateCheckDropMoves<Us, ROOK>()(pos, pos.check_squares(ROOK) & empties, mlist);
 
   return mlist;
 }
@@ -921,9 +918,6 @@ ExtMove* generateMoves(const Position& pos, ExtMove* mlist,Square recapSq)
 
   if (GenType == LEGAL || GenType == LEGAL_ALL)
   {
-    // LEGALだけは特殊な状況で用いるので、呼び出し元でcheck_info_update()は呼び出しされていないはずなのでここで呼び出しておく。
-    const_cast<Position*>(&pos)->check_info_update();
-
     // 合法性な指し手のみを生成する。
     // 自殺手や打ち歩詰めが含まれているのでそれを取り除く。かなり重い。ゆえにLEGALは特殊な状況でしか使うべきではない。
     auto last = pos.in_check() ? generateEvasionMoves<All>(pos,mlist) : generateMoves<NON_EVASIONS, All>(pos, mlist);

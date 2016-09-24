@@ -1,6 +1,6 @@
 ﻿#include "../shogi.h"
 
-#if defined(EVAL_LEARN) && defined(YANEURAOU_2016_MID_ENGINE)
+#if defined(EVAL_LEARN)
 
 #include "multi_think.h"
 
@@ -8,7 +8,7 @@ using namespace std;
 
 extern void is_ready();
 
-// いまのところ、やねうら王2016Midしか、このスタブを持っていない。
+// いまのところ、やねうら王2016Mid/Lateしか、このスタブを持っていない。
 namespace Learner
 {
   extern pair<Value, vector<Move> >  search(Position& pos, Value alpha, Value beta, int depth);
