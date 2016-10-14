@@ -28,7 +28,7 @@
 //#define USE_SSE42
 //#define USE_SSE41
 //#define USE_SSE2
-//#define NO_SSE
+#define NO_SSE
 
 #if defined(USE_AVX2)
 #define USE_SSE42
