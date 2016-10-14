@@ -66,3 +66,33 @@ Total time (ms) : 562111
 Nodes searched  : 70081495
 Nodes/second    : 124675
 
+
+〇新やねうら王
+
+・x64
+info depth 15 seldepth 27 score cp -3472 nodes 3704828 nps 488828 hashfull 604 time 7579 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 6f2b B*3d 4c3d 3e3d 1c2d S*3b N*3a G*3e 2d3e 3f3e
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 38489
+Nodes searched  : 16760556
+Nodes/second    : 435463
+
+・arm64-v8a
+info depth 15 seldepth 27 score cp -3472 nodes 3704828 nps 150072 hashfull 604 time 24687 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 6f2b B*3d 4c3d 3e3d 1c2d S*3b N*3a G*3e 2d3e 3f3e
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 127990
+Nodes searched  : 16760556
+Nodes/second    : 130952
+
+・x86_64
+info depth 15 seldepth 27 score cp -3472 nodes 3704828 nps 420334 hashfull 604 time 8814 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 6f2b B*3d 4c3d 3e3d 1c2d S*3b N*3a G*3e 2d3e 3f3e
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 44734
+Nodes searched  : 16760556
+Nodes/second    : 374671
+

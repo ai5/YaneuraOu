@@ -1411,7 +1411,7 @@ void bench_cmd(Position& pos, istringstream& is)
 #ifdef __ANDROID__
   string ttSize = (is >> token) ? token : "32";
 #else  
-  string ttSize = (is >> token) ? token : "1024";
+  string ttSize = (is >> token) ? token : "32";
 #endif
   string threads = (is >> token) ? token : "1";
   string limit = (is >> token) ? token : "15";

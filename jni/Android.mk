@@ -29,7 +29,7 @@ endif
 LOCAL_MODULE    := YaneuraOu-$(TARGET_ARCH_ABI)
 LOCAL_CXXFLAGS  := -std=c++1y -fno-exceptions -fno-rtti -Wextra -Ofast -MMD -MP -fpermissive -D__STDINT_MACROS $(ARCH_DEF)
 LOCAL_CXXFLAGS += -fPIE
-LOCAL_LDFLAGS += -fPIE -pie 
+LOCAL_LDFLAGS += -fPIE -pie
 LOCAL_LDLIBS = 
 LOCAL_C_INCLUDES := 
 LOCAL_CPP_FEATURES += exceptions rtti
@@ -44,10 +44,12 @@ LOCAL_SRC_FILES := ../source/bitboard.cpp ../source/misc.cpp ../source/movegen.c
            ../source/extra/bitop.cpp ../source/extra/book.cpp ../source/extra/entering_king_win.cpp \
            ../source/extra/long_effect.cpp ../source/extra/mate1ply_without_effect.cpp ../source/extra/mate1ply_with_effect.cpp \
            ../source/extra/move_picker_2016Q2.cpp \
+           ../source/extra/move_picker_2016Q3.cpp \
            ../source/extra/see.cpp \
            ../source/extra/test_cmd.cpp ../source/extra/timeman.cpp \
            ../source/engine/classic-tce-engine/classic-tce-search.cpp \
            ../source/engine/2016-mid-engine/2016-mid-search.cpp \
+           ../source/engine/2016-late-engine/2016-late-search.cpp \
            ../source/engine/user-engine/user-search.cpp
 
 include $(BUILD_EXECUTABLE)
