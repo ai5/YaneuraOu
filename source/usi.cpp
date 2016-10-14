@@ -821,6 +821,11 @@ Move move_from_usi(const Position& pos, const std::string& str)
 	if (str == "win")
 		return MOVE_WIN;
 
+	if (str == "0000" || str == "pass")
+	{
+		return MOVE_NULL;
+	}
+	
 	// usi文字列をmoveに変換するやつがいるがな..
 	Move move = move_from_usi(str);
 

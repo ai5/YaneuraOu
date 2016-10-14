@@ -180,8 +180,6 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseSSE42|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IntDir>..\..\YaneuraOu2016Engine\$(Platform)\$(Configuration)\</IntDir>
-    <OutDir>..\..\YaneuraOu2016Engine\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
