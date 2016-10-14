@@ -117,6 +117,7 @@ def create_option(engines,engine_threads,evals,times,hashes,numa,PARAMETERS_LOG_
 			option.append("setoption name EvalDir value " + evals[i])
 			option.append("setoption name Hash value " + str(hashes[i]))
 			option.append("setoption name BookFile value no_book")
+			option.append("setoption MinimumThinkingTime value 1000")
 			option.append("setoption name NetworkDelay value 0")
 			option.append("setoption name NetworkDelay2 value 0")
 
@@ -419,6 +420,7 @@ def vs_match(engines_full,options,threads,loop,numa,book_sfens,fileLogging,opt2,
 						if vs[j] == "score":
 							if j+2 < len(vs):
 								# 技巧が変な文字送ってくるときがある。
+								# "mate + string Nyugyoku"みたいなの。無視する。
 								try:
 									v = int(vs[j+2])
 								except:
@@ -610,6 +612,7 @@ def engine_to_full(e):
 # engine_threads    : 思考エンジンのスレッド数
 # hash1,hash2       : 思考エンジンのhashサイズ
 # time1…timeN      : 持ち時間の指定
+# rand_book         : 定跡の順番をランダム化(rand_book:1を指定したとき)
 
 # 持ち時間の書式サンプル
 #  r100    : random time 100
@@ -635,6 +638,7 @@ eval2_path = ""
 play_time_list = ""
 book_moves = 24
 PARAMETERS_LOG_FILE_PATH = ""
+rand_book = 0
 
 # パラメーターのparse
 for param in sys.argv[1:]:
@@ -670,6 +674,8 @@ for param in sys.argv[1:]:
 			play_time_list = data.split(",")
 		elif label == "PARAMETERS_LOG_FILE_PATH":
 			PARAMETERS_LOG_FILE_PATH = data
+		elif label == "rand_book":
+			rand_book = int(data)
 		else:
 			print "Error! can't parse > "+ param
 
@@ -699,6 +705,7 @@ print "evaldirs       : " , evaldirs
 print "hash size      : " , hashes
 print "book_moves     : " , book_moves
 print "engine_threads : " , engine_threads
+print "rand_book      : " , rand_book
 print "PARAMETERS_LOG_FILE_PATH : " , PARAMETERS_LOG_FILE_PATH
 
 book_file = open(home+"/book/records2016_10818.sfen","r")
@@ -720,6 +727,10 @@ for sfen in book_file:
 		sys.stdout.flush()
 book_file.close()
 print
+
+# 定跡をシャッフルする
+if rand_book:
+	random.shuffle(book_sfens)
 
 threads = threads / engine_threads
 

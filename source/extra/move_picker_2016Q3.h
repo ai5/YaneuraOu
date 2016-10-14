@@ -79,14 +79,22 @@ struct Stats {
 
     ASSERT_LV4(is_ok(to));
 
-    // abs(v) <= 324に制限する。
+#if 1
+	// abs(v) <= 324に制限する。
+	// → returnするのが良いかどうかはわからない。
+	// depthの2乗ボーナスだとしたら、depth >= 18以上でないと関係がない部分であり、
+	// なかなか表面化してこない。
+	// 長い持ち時間では変わるはずなのだが、この違いを検証するのは大変。
 
-    //v = max((Value)-324, v);
-    //v = min((Value)+324, v);
+	if (abs(int(v)) >= 324)
+		return;
 
-    // ToDo : ↑と↓と、どちらが良いのか..
-    if (abs(int(v) >= 324))
-      return ;
+#else
+
+	// 値が過剰だと言うなら足切りするのはどうか。
+	v = (Value)max(int(v) , -324);
+	v = (Value)min(int(v) , +324);
+#endif
 
     table[to][pc] -= table[to][pc] * abs(int(v)) / (CM ? 936 : 324);
     table[to][pc] += int(v) * 32;

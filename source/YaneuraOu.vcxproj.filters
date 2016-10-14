@@ -157,6 +157,9 @@
     <ClInclude Include="extra\move_picker_2016Q3.h">
       <Filter>リソース ファイル\extra</Filter>
     </ClInclude>
+    <ClInclude Include="engine\2016-late-engine\2016-late-param_body.h">
+      <Filter>リソース ファイル\engine\2016-late-engine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="movegen.cpp">
@@ -264,9 +267,6 @@
     <ClCompile Include="engine\help-mate-engine\help-mate-search.cpp">
       <Filter>リソース ファイル\engine\help-mate-engine</Filter>
     </ClCompile>
-    <ClCompile Include="eval\evaluate_kppt_fast.cpp">
-      <Filter>リソース ファイル\eval</Filter>
-    </ClCompile>
     <ClCompile Include="learn\learner.cpp">
       <Filter>リソース ファイル\learn</Filter>
     </ClCompile>
@@ -280,6 +280,9 @@
       <Filter>リソース ファイル\learn</Filter>
     </ClCompile>
     <ClCompile Include="extra\move_picker_2016Q3.cpp">
+      <Filter>リソース ファイル\extra</Filter>
+    </ClCompile>
+    <ClCompile Include="extra\mate_n_ply.cpp">
       <Filter>リソース ファイル\extra</Filter>
     </ClCompile>
   </ItemGroup>
@@ -332,14 +335,20 @@
     <Text Include="..\docs\old\更新履歴2016Q2まで.txt">
       <Filter>doc\old</Filter>
     </Text>
-    <Text Include="..\exe\YaneuraOu-2016-mid.txt">
-      <Filter>exe</Filter>
-    </Text>
     <Text Include="..\exe\YaneuraOu-2016-mid_ja.txt">
       <Filter>exe</Filter>
     </Text>
     <Text Include="..\docs\やねうら大定跡.txt">
       <Filter>doc</Filter>
+    </Text>
+    <Text Include="..\exe\YaneuraOu-2016-late_ja.txt">
+      <Filter>exe</Filter>
+    </Text>
+    <Text Include="..\exe\YaneuraOu-2016-late-readme.txt">
+      <Filter>exe</Filter>
+    </Text>
+    <Text Include="..\exe\YaneuraOu-2016-mid-readme.txt">
+      <Filter>exe</Filter>
     </Text>
   </ItemGroup>
   <ItemGroup>
@@ -388,17 +397,29 @@
     <None Include="..\script\calc_rating.py">
       <Filter>script</Filter>
     </None>
-    <None Include="..\script\engine_invoker.py">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\script\engine_invoker2.py">
-      <Filter>script</Filter>
-    </None>
-    <None Include="..\script\engine_invoker3.py">
-      <Filter>script</Filter>
-    </None>
     <None Include="..\script\analyze_result_log.py">
       <Filter>script</Filter>
+    </None>
+    <None Include="..\script\engine_invoker1.py">
+      <Filter>script</Filter>
+    </None>
+    <None Include="..\script\engine_invoker4.py">
+      <Filter>script</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-late.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-late-nosse.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-late-sse2.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-late-sse41.exe">
+      <Filter>exe</Filter>
+    </None>
+    <None Include="..\exe\YaneuraOu-2016-late-sse42.exe">
+      <Filter>exe</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -290,6 +290,7 @@
 #define USE_SHARED_MEMORY_IN_EVAL
 // パラメーターの自動調整絡み
 #define USE_GAMEOVER_HANDLER
+//#define LONG_EFFECT_LIBRARY
 #endif
 
 
@@ -360,6 +361,7 @@
 #include <climits>  // INT_MAX
 #include <ctime>    // std::ctime()
 #include <random>   // random_device
+#include <cstddef>  // offsetof
 
 // --------------------
 //   diable warnings
@@ -610,6 +612,12 @@ inline int MKDIR(std::string dir_name)
 // また、それらの評価関数は駒割りの計算(EVAL_MATERIAL)に依存するので、それをdefineしてやる。
 #if defined(EVAL_PP) || defined(EVAL_KPP) || defined(EVAL_KPPT) || defined(EVAL_KPPT_FAST) || defined(EVAL_PPE)
 #define USE_EVAL_DIFF
+#endif
+
+// AVX2を用いたKPPT評価関数は高速化できるので特別扱い。
+// Skylake以降でないとほぼ効果がないが…。
+#if defined(EVAL_KPPT) && defined(USE_AVX2)
+#define USE_FAST_KPPT
 #endif
 
 // -- 評価関数の種類により、盤面の利きの更新ときの処理が異なる。(このタイミングで評価関数の差分計算をしたいので)

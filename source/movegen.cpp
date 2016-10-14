@@ -245,8 +245,8 @@ template <MOVE_GEN_TYPE GenType, Color Us, bool All> struct GeneratePieceMoves<G
     // 盤上の自駒の歩に対して
     auto pieces = pos.pieces(Us, PAWN);
 
-    // Apery型の縦型Bitboardにおいては歩の利きはbit shiftで済む。
-    auto target2 = (Us == BLACK ? (pieces >> 1) : (pieces << 1) ) & target;
+	// 歩の利き
+    auto target2 = (Us == BLACK ? shift<SQ_U>(pieces) : shift<SQ_D>(pieces) ) & target;
 
     // 先手に対する1段目(後手ならば9段目)を表す定数
     const Rank T_RANK1 = (Us == BLACK) ? RANK_1 : RANK_9;
@@ -825,6 +825,9 @@ ExtMove* generate_checks(const Position& pos, ExtMove* mlist)
     (pos.pieces(Us, BISHOP) & check_candidate_bb(Us, BISHOP, themKing)) |
     (pos.pieces(Us, ROOK) ) | // ROOK,DRAGONは無条件全域
     (pos.pieces(Us, HDK) & pos.pieces(Us, BISHOP) & check_candidate_bb(Us, ROOK, themKing)); // check_candidate_bbにはROOKと書いてるけど、HORSE
+
+  // ここには王を敵玉の8近傍に移動させる指し手も含まれるが、王が近接する形はレアケースなので
+  // 指し手生成の段階では除外しなくても良いと思う。
 
   const Bitboard y = pos.discovered_check_candidates();
   const Bitboard target =
