@@ -279,6 +279,7 @@ namespace USI
 		// -1なら、指定なし。
 		o["EngineNuma"] << Option(-1, 0, 99999);
 #endif
+		o["OwnBook"] << Option(true);
 
 		// 各エンジンがOptionを追加したいだろうから、コールバックする。
 		USI::extra_option(o);
