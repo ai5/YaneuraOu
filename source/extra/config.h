@@ -24,7 +24,7 @@
 // ターゲットCPUのところだけdefineしてください。(残りは自動的にdefineされます。)
 
 //#define USE_AVX512
-#define USE_AVX2
+//#define USE_AVX2
 //#define USE_SSE42
 //#define USE_SSE41
 //#define USE_SSE2
@@ -502,9 +502,11 @@ const bool pretty_jp = false;
 // ----------------------------
 
 // ターゲットが64bitOSかどうか
-#if (defined(_WIN64) && defined(_MSC_VER)) || (defined(__GNUC__) && defined(__x86_64__))
+#if (defined(_WIN64) && defined(_MSC_VER)) || (defined(__GNUC__) && defined(__x86_64__) || defined(IS_64BIT))
 const bool Is64Bit = true;
-#define IS_64BIT
+#ifndef IS_64BIT
+ #define IS_64BIT
+#endif
 #else
 const bool Is64Bit = false;
 #endif
