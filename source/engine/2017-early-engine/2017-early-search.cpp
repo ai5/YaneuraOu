@@ -2676,7 +2676,7 @@ void MainThread::think()
 	{
 		// 定跡を用いる手数
 		int book_ply = Options["BookMoves"];
-		if (rootPos.game_ply() <= book_ply)
+		if (rootPos.game_ply() <= book_ply && Options["OwnBook"])
 		{
 			auto it = book.find(rootPos);
 			if (it != book.end() && it->second.size() != 0) {
