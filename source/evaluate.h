@@ -51,7 +51,8 @@ namespace Eval {
   void eval_learn_init();
 
   // 学習のときの勾配配列の初期化
-  void init_grad();
+  // 学習率を引数に渡しておく。0.0fなら、defaultの値を採用する。
+  void init_grad(float eta);
 
   // 現在の局面で出現している特徴すべてに対して、勾配の差分値を勾配配列に加算する。
   void add_grad(Position& pos , Color rootColor , double delt_grad);
@@ -73,7 +74,7 @@ namespace Eval {
 
 #else
 
-#if defined (EVAL_PP) || defined(EVAL_KPP)
+#if defined (EVAL_MATERIAL) || defined (EVAL_PP) || defined(EVAL_KPP)
   // Bona6の駒割りを初期値に。それぞれの駒の価値。
   enum {
     PawnValue = 86,
@@ -132,7 +133,7 @@ namespace Eval {
 #if defined(USE_FAST_KPPT)
   enum BonaPiece: int32_t
 #else
-  enum BonaPiece: int16_t
+  enum BonaPiece : int16_t
 #endif
   {
     // f = friend(≒先手)の意味。e = enemy(≒後手)の意味
@@ -141,7 +142,7 @@ namespace Eval {
 
     // --- 手駒
 
-#if defined (EVAL_PP) || defined(EVAL_KPP)
+#if defined (EVAL_MATERIAL) || defined (EVAL_PP) || defined(EVAL_KPP)
 
     f_hand_pawn = BONA_PIECE_ZERO + 1,
     e_hand_pawn = f_hand_pawn + 18,

@@ -11,7 +11,6 @@
 // I pay my respects to his great achievements.
 //
 
-
 #ifdef EVAL_KPPT
 
 #include <fstream>
@@ -67,20 +66,39 @@ namespace Eval
 			else goto Error;
 
 #if 0
+			// kppのp1==p2のところ、値はゼロとなっていること。(参照はするけど学習のときに使いたくないので)
+			{
+				const ValueKpp kpp_zero = { 0,0 };
+				float sum = 0;
+				for (auto sq : SQ)
+					for (auto p = BONA_PIECE_ZERO; p < fe_end; ++p)
+					{
+						sum += abs(kpp[sq][p][p][0]) + abs(kpp[sq][p][p][1]);
+						kpp[sq][p][p] = kpp_zero;
+					}
+				cout << "sum kp = " << sum << endl;
+			}
+
+#endif
+
+#if 0
 			// Aperyの評価関数バイナリ、kppのp=0のところでゴミが入っている。
 			// 駒落ちなどではここを利用したいので0クリアすべき。
-			const ValueKpp kpp_zero = { 0,0 };
-			for (auto sq : SQ)
-				for (BonaPiece p1 = BONA_PIECE_ZERO; p1 < fe_end; ++p1)
-				{
-					kpp[sq][p1][0] = kpp_zero;
-					kpp[sq][0][p1] = kpp_zero;
-				}
+			{
+				const ValueKpp kpp_zero = { 0,0 };
+				for (auto sq : SQ)
+					for (BonaPiece p1 = BONA_PIECE_ZERO; p1 < fe_end; ++p1)
+					{
+						kpp[sq][p1][0] = kpp_zero;
+						kpp[sq][0][p1] = kpp_zero;
+					}
 
-			const ValueKkp kkp_zero = { 0,0 };
-			for (auto sq1 : SQ)
-				for (auto sq2 : SQ)
-					kkp[sq1][sq2][0] = kkp_zero;
+				const ValueKkp kkp_zero = { 0,0 };
+				for (auto sq1 : SQ)
+					for (auto sq2 : SQ)
+						kkp[sq1][sq2][0] = kkp_zero;
+
+			}
 #endif
 
 #if 0
@@ -192,7 +210,7 @@ namespace Eval
 		// エンジンのバージョンによって評価関数は一意に定まるものとする。
 		// Numaで確保する名前を変更しておく。
 
-		auto dir_name = (string)Options["EvalDir"] + "Numa" + (string)Options["EngineNuma"];
+		auto dir_name = (string)Options["EvalDir"];
 		// Mutex名にbackslashは使えないらしいので、escapeする。念のため'/'もescapeする。
 		replace(dir_name.begin(), dir_name.end(), '\\', '_');
 		replace(dir_name.begin(), dir_name.end(), '/', '_');
@@ -779,15 +797,17 @@ namespace Eval
 #ifdef USE_EVAL_HASH
 		// evaluate hash tableにはあるかも。
 
-		const Key keyExcludeTurn = st->key() & ~1; // 手番を消した局面hash key
-		EvalSum entry = *g_evalTable[keyExcludeTurn];       // atomic にデータを取得する必要がある。
+		const Key keyExcludeTurn = st->key() >> 1;		// 手番を消した局面hash key
+		EvalSum entry = *g_evalTable[keyExcludeTurn];   // atomic にデータを取得する必要がある。
 		entry.decode();
 		if (entry.key == keyExcludeTurn)
 		{
+//			dbg_hit_on(true);
 			// あった！
-			st->sum = entry;
+			sum = entry;
 			return Value(entry.sum(pos.side_to_move()) / FV_SCALE);
 		}
+//		dbg_hit_on(false);
 #endif
 
 		// 評価関数本体を呼び出して求める。
@@ -795,9 +815,9 @@ namespace Eval
 
 #ifdef USE_EVAL_HASH
 		// せっかく計算したのでevaluate hash tableに保存しておく。
-		st->sum.key = keyExcludeTurn;
-		st->sum.encode();
-		*g_evalTable[keyExcludeTurn] = st->sum;
+		sum.key = keyExcludeTurn;
+		sum.encode();
+		*g_evalTable[keyExcludeTurn] = sum;
 #endif
 
 		ASSERT_LV5(pos.state()->materialValue == Eval::material(pos));
@@ -812,7 +832,7 @@ namespace Eval
 		}
 #endif
 
-		return Value(st->sum.sum(pos.side_to_move()) / FV_SCALE);
+		return Value(sum.sum(pos.side_to_move()) / FV_SCALE);
 	}
 
 	void evaluate_with_no_return(const Position& pos)
