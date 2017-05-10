@@ -117,7 +117,7 @@ void USI::extra_option(USI::OptionsMap & o)
 	o["BookEvalDiff"] << Option(30, 0, 99999);
 	o["BookEvalBlackLimit"] << Option(0, -99999, 99999);
 	o["BookEvalWhiteLimit"] << Option(-140, -99999, 99999);
-	o["BookDepthLimit"] << Option(16, 0, 99999);
+	o["BookDepthLimit"] << Option(0, 0, 99999);
 
 	// 定跡をメモリに丸読みしないオプション。(default = false)
 	o["BookOnTheFly"] << Option(false);
