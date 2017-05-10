@@ -41,7 +41,9 @@ LOCAL_SRC_FILES := ../source/bitboard.cpp ../source/misc.cpp ../source/movegen.c
            ../source/eval/evaluate_kpp.cpp ../source/eval/evaluate_material.cpp \
            ../source/eval/evaluate_no_eval.cpp ../source/eval/evaluate_bona_piece.cpp \
            ../source/eval/evaluate_kppt.cpp \
-           ../source/extra/bitop.cpp ../source/extra/book.cpp ../source/extra/entering_king_win.cpp \
+           ../source/extra/bitop.cpp ../source/extra/entering_king_win.cpp \
+           ../source/extra/book/book.cpp \
+           ../source/extra/book/apery_book.cpp \
            ../source/extra/long_effect.cpp ../source/extra/mate1ply_without_effect.cpp ../source/extra/mate1ply_with_effect.cpp \
            ../source/extra/move_picker_2016Q2.cpp \
            ../source/extra/move_picker_2016Q3.cpp \

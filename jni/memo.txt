@@ -126,4 +126,38 @@ Total time (ms) : 56293
 Nodes searched  : 7879849
 Nodes/second    : 139979
 
+〇2017/5/10 バージョン更新後
+・arm64-v8a
+info depth 17 seldepth 33 score cp -4798 upperbound nodes 4443510 nps 166886 hashfull 630 time 26626 pv G*1c 4b3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 158747
+Nodes searched  : 21380851
+Nodes/second    : 134685
+
+・win64
+info depth 17 seldepth 33 score cp -4798 upperbound nodes 4443510 nps 465679 hashfull 630 time 9542 pv G*1c 4b3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 52524
+Nodes searched  : 21380851
+Nodes/second    : 407068
+
+・x86_64
+info depth 17 seldepth 33 score cp -4798 upperbound nodes 4443510 nps 163949 hashfull 630 time 27103 pv G*1c 4b3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 149104
+Nodes searched  : 21380851
+Nodes/second    : 143395
+
+
+
+
+
+
+
 
