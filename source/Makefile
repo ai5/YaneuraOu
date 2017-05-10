@@ -16,8 +16,10 @@ YANEURAOU_EDITION = YANEURAOU_2017_EARLY_ENGINE
 
 COMPILER = g++
 #COMPILER = mpicxx
-CFLAGS   = -std=c++14 -fno-exceptions -fno-rtti -Wextra -Ofast -MMD -MP -fopenmp -fpermissive -D_WIN64
-# ltoオプションを指定すると実行同時にSegmentation Faultで落ちるときがあるので、そのときは、コメントアウトしてください。
+
+CFLAGS   = -std=c++14 -fno-exceptions -fno-rtti -Wextra -Ofast -MMD -MP -fopenmp -fpermissive -D_WIN64 -DUNICODE
+
+# ltoオプションを指定すると実行直後にSegmentation Faultで落ちるときがあるので、そのときは、コメントアウトしてください。
 # CFLAGS   += -flto
 CFLAGS   += -march=native
 LDFLAGS  = -lpthread #-lboost_mpi -lboost_serialization
@@ -43,8 +45,9 @@ SOURCES  = shogi.cpp                                                           \
 	position.cpp                                                               \
 	usi.cpp                                                                    \
 	thread.cpp tt.cpp                                                          \
+	extra/book/apery_book.cpp                                                  \
 	extra/bitop.cpp                                                            \
-	extra/book.cpp                                                             \
+	extra/book/book.cpp                                                        \
 	extra/entering_king_win.cpp                                                \
 	extra/long_effect.cpp                                                      \
 	extra/mate1ply_with_effect.cpp                                             \

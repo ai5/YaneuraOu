@@ -252,15 +252,15 @@ inline bool aligned(Square s1, Square s2, Square s3) {
 #endif
 
 // sqの升にいる敵玉に王手となるc側の駒ptの候補を得るテーブル。第2添字は(pr-1)を渡して使う。
-extern Bitboard CheckCandidateBB[SQ_NB_PLUS1][HDK][COLOR_NB];
+extern Bitboard CheckCandidateBB[SQ_NB_PLUS1][KING][COLOR_NB];
 
 // sqの升にいる敵玉に王手となるus側の駒ptの候補を得る
 // pr == ROOKは無条件全域なので代わりにHORSEで王手になる領域を返す。
 // pr == KINGはsqの24近傍を返す。(ただしこれは王手生成では使わない)
-inline const Bitboard check_candidate_bb(Color us, Piece pr, Square sq) { ASSERT_LV3(PAWN<= pr && pr <= HDK); return CheckCandidateBB[sq][pr - 1][us]; }
+inline const Bitboard check_candidate_bb(Color us, Piece pr, Square sq) { ASSERT_LV3(PAWN<= pr && pr <= KING); return CheckCandidateBB[sq][pr - 1][us]; }
 
 // ある升の24近傍のBitboardを返す。
-inline const Bitboard around24_bb(Square sq) { return check_candidate_bb(BLACK, HDK, sq); }
+inline const Bitboard around24_bb(Square sq) { return check_candidate_bb(BLACK, KING, sq); }
 
 // --------------------
 //  Bitboard用の駒定数
@@ -418,11 +418,13 @@ inline bool more_than_one(const Bitboard& bb) { ASSERT_LV2(!bb.cross_over()); re
 // SQ_Uを指定したときに、51の升は49の升に移動するので、注意すること。(51の升にいる先手の歩は存在しないので、
 // 歩の移動に用いる分には問題ないはずではあるが。)
 
+// ToDo : x86モードではBitboardのaligned(16)を強制できない？あとで調査する。
+
 template<Square D>
-inline Bitboard shift(Bitboard b) {
+inline Bitboard shift(const Bitboard& b) {
 	ASSERT_LV3(D == SQ_U || D == SQ_D);
 
-	// Apery型の縦型Bitboardにおいては歩の利きはbit shiftで済む。
+	// Apery型の縦型Bitboardにおいては歩の利きはbit shiftで済む。be
 	return  D == SQ_U ? b >> 1 : D == SQ_D ? b << 1
 		: ZERO_BB;
 }

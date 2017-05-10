@@ -8,6 +8,13 @@ YaneuraOu mini is a shogi engine(AI player), stronger than Bonanza6 , educationa
 
 [やねうら王公式 ](http://yaneuraou.yaneu.com/)
 
+## やねうら王シリーズの遊び方
+
+[このプロジェクトのexeフォルダ](https://github.com/yaneurao/YaneuraOu/tree/master/exe)の対象フォルダ配下にある、XXX-readme.txtをご覧ください。
+
+- 質問等は以下の記事のコメント欄でお願いします。Twitterでの個別質問にはお答え出来ません。
+	- [やねうら王セットアップ質問スレッド](http://yaneuraou.yaneu.com/2017/05/04/%E3%82%84%E3%81%AD%E3%81%86%E3%82%89%E7%8E%8B-%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97%E8%B3%AA%E5%95%8F%E3%82%B9%E3%83%AC%E3%83%83%E3%83%89/)
+
 # Sub-projects
 
 ## やねうら王nano
@@ -17,12 +24,12 @@ YaneuraOu mini is a shogi engine(AI player), stronger than Bonanza6 , educationa
 ## やねうら王nano plus
 
 やねうら王nano plusは、探索部300行程度で、オーダリングなどを改善した非常にシンプルでかつそこそこ強い思考エンジンです。(R2500程度)
-	
+
 ## やねうら王mini
 
 やねうら王miniは、やねうら王nano plusを並列化して、将棋ソフトとしての体裁を整えたものです。Bonanza6より強く、教育的かつ短いコードで書かれています。全体で3000行程度、探索部500行程度。(R2700程度)
 
-## やねうら王classic 
+## やねうら王classic
 
 やねうら王classicは、やねうら王miniのソースコードを改良する形で、Apery(WCSC 2015)ぐらいの強さを目指しました。入玉宣言機能も追加しました。(R3000程度)
 
@@ -43,11 +50,11 @@ NDFの学習メソッドを用い、Hyperopt等を用いて各種パラメータ
 
 ## やねうら王2017 Early
 
-2017年Q1完成予定。R3750程度の予定。
+2017年5月3日完成。蒼天幻想ナイツ・オブ・タヌキ(WCSC27出場)の評価関数を用いるとXeon 24コアでR4000程度の模様。
 
-## やねうら王2017 Late(非公開予定)
+## やねうら王2017 Late
 
-2017年10月ごろ完成予定。
+《開発計画中》
 
 ## やねうら王 王手将棋エディション
 
@@ -62,16 +69,12 @@ NDFの学習メソッドを用い、Hyperopt等を用いて各種パラメータ
 連続自動対局を自動化できます。 python版のスクリプトも用意。今後は、python版のほうに注力します。
 
 ## やねうら王協力詰めsolver
-	
+
 『寿限無3』(49909手)も解ける協力詰めsolver →　[解説ページ](http://yaneuraou.yaneu.com/2016/01/02/%E5%8D%94%E5%8A%9B%E8%A9%B0%E3%82%81solver%E3%82%92%E5%85%AC%E9%96%8B%E3%81%97%E3%81%BE%E3%81%99/)
 
 ## やねうら王詰め将棋solver (気が向いたら製作します)
 
 長手数の詰将棋が解けるsolverです。
-
-## やねうら王シリーズの遊び方
-
-[このプロジェクトのexeフォルダ](https://github.com/yaneurao/YaneuraOu/tree/master/exe)にある、XXX-readme.txtをご覧ください。
 
 ## やねうら王評価関数バイナリ
 
@@ -96,11 +99,11 @@ NDFの学習メソッドを用い、Hyperopt等を用いて各種パラメータ
 ## 定跡集
 
 やねうら王2016Mid以降で使える、各種定跡集。
-ダウンロードしたあと、zipファイルになっているのでそれを解凍して、やねうら王2016Midの実行ファイルを配置しているフォルダ配下のbookフォルダに放り込んでください。
+ダウンロードしたあと、zipファイルになっているのでそれを解凍して、やねうら王の実行ファイルを配置しているフォルダ配下のbookフォルダに放り込んでください。
 
 コンセプトおよび定跡フォーマットについて : [やねうら大定跡はじめました](http://yaneuraou.yaneu.com/2016/07/10/%E3%82%84%E3%81%AD%E3%81%86%E3%82%89%E5%A4%A7%E5%AE%9A%E8%B7%A1%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F/)
 
--[やねうら大定跡V1.01](https://drive.google.com/open?id=0Bzbi5rbfN85NbWxfazMzamFVZm8)  
+-[やねうら大定跡V1.01](https://drive.google.com/open?id=0Bzbi5rbfN85NbWxfazMzamFVZm8)
 -[真やねうら定跡](https://drive.google.com/open?id=0ByIGrGAuSfHHcXRrc2FmdHVmRzA)
 
 ## 世界コンピュータ将棋選手権および2017年に開催される第5回将棋電王トーナメントに参加される開発者の方へ
@@ -110,6 +113,6 @@ NDFの学習メソッドを用い、Hyperopt等を用いて各種パラメータ
 
 ## ライセンス
 
-やねうら王プロジェクトのソースコードはStockfishをそのまま用いている部分が多々あり、Apery/SilentMajorityを参考にしている部分もありますので、やねうら王プロジェクトは、それらのプロジェクトのライセンス(GPL)に従うものとします。
+やねうら王プロジェクトのソースコードはStockfishをそのまま用いている部分が多々あり、Apery/SilentMajorityを参考にしている部分もありますので、やねうら王プロジェクトは、それらのプロジェクトのライセンス(GPLv3)に従うものとします。
 
 また、「真やねうら王の評価関数ファイル」は、Aperyの評価関数バイナリから追加学習させたものですので、その著作権は、Aperyの開発者の平岡拓也氏に帰属し、ライセンスや取扱いは元のライセンスに従うものとします。また、やねうら王プロジェクト側はこのファイルの著作権を主張しません。

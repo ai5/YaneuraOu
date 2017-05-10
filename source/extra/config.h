@@ -131,6 +131,10 @@
 // 自前でPVを管理してRootMoves::pvを更新するなら、この機能を使う必要はない。
 // これはPVの更新が不要なので実装が簡単だが、Ponderの指し手を返すためには
 // PVが常に正常に更新されていないといけないので最近はこの方法は好まれない。
+// ただしShogiGUIの解析モードでは思考エンジンが出力した最後の読み筋を記録するようなので、
+// fail low/fail highしたときのものが棋譜に残る。このとき、読み筋は途中までしか出力されないが、
+// これはまずい。かと言って、ShogiGUIが棋譜解析のときにfail low/fail highした読み筋を無視するようにすると、
+// それはbest moveとは異なる可能性があるので、それはよろしくない。結論的には、USE_TT_PVは有効にすべき。
 // #define USE_TT_PV
 
 // 定跡を作るコマンド("makebook")を有効にする。
@@ -182,6 +186,10 @@
 
 // USIプロトコルでgameoverコマンドが送られてきたときに gameover_handler()を呼び出す。
 // #define USE_GAMEOVER_HANDLER
+
+// EVAL_HASHで使用するメモリとして大きなメモリを確保するか。
+// これをONすると数%高速化する代わりに、メモリ使用量が1GBほど増える。
+// #define USE_LARGE_EVAL_HASH
 
 // --------------------
 // release configurations
@@ -300,6 +308,9 @@
 #define ENGINE_NAME "YaneuraOu 2017 Early"
 #define EVAL_KPPT
 #define USE_EVAL_HASH
+//#define USE_LARGE_EVAL_HASH
+
+#define USE_TT_PV
 #define USE_SEE
 #define USE_MOVE_PICKER_2017Q2
 #define USE_MATE_1PLY
@@ -397,6 +408,7 @@
 #define USE_MATE_1PLY
 #define EVAL_NO_USE
 #define LONG_EFFECT_LIBRARY
+#define USE_KEY_AFTER
 #endif
 
 // --- ユーザーの自作エンジンとして実行ファイルを公開するとき用の設定集
@@ -605,6 +617,18 @@ const bool Is64Bit = false;
 
 #ifdef USE_SSE41
 #define USE_SSE2
+#endif
+
+// --------------------
+//    for 32bit OS
+// --------------------
+
+#if !defined(IS_64BIT)
+
+// 32bit環境ではメモリが足りなくなるので以下の2つは強制的にオフにしておく。
+#undef USE_EVAL_HASH
+#undef USE_SHARED_MEMORY_IN_EVAL
+
 #endif
 
 // ----------------------------

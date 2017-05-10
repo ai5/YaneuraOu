@@ -42,7 +42,7 @@
 #include "../../thread.h"
 #include "../../misc.h"
 #include "../../tt.h"
-#include "../../extra/book.h"
+#include "../../extra/book/book.h"
 #include "../../move_picker.h"
 #include "../../learn/learn.h"
 
@@ -100,10 +100,11 @@ void USI::extra_option(USI::OptionsMap & o)
 	//  user_book1.db    ユーザー定跡1
 	//  user_book2.db    ユーザー定跡2
 	//  user_book3.db    ユーザー定跡3
+	//  book.bin         Apery型の定跡DB
 
 	std::vector<std::string> book_list = { "no_book" , "standard_book.db"
 		, "yaneura_book1.db" , "yaneura_book2.db" , "yaneura_book3.db", "yaneura_book4.db"
-		, "user_book1.db", "user_book2.db", "user_book3.db" };
+		, "user_book1.db", "user_book2.db", "user_book3.db", "book.bin" };
 	o["BookFile"] << Option(book_list, book_list[1], [](auto& o) { book_name = string(o); });
 	book_name = book_list[1];
 
@@ -162,6 +163,9 @@ void USI::extra_option(USI::OptionsMap & o)
 	// パラメーターのログの保存先のfile path
 	o["PARAMETERS_LOG_FILE_PATH"] << Option("param_log.txt");
 #endif
+
+	// 定跡データベースの採択率に比例して指し手を選択するオプション
+  o["ConsiderBookMoveCount"] << Option(false);
 }
 
 // -----------------------
@@ -507,7 +511,7 @@ namespace YaneuraOu2017Early
 
 			// 置換表にhitした場合は、すでに詰みを調べたはずであり、
 			// 親nodeで枝刈りが生じていると考えられるので置換表にhitしなかったときにのみ調べる。
-			if (PARAM_QSEARCH_MATE1 && (!ttHit || PvNode))
+			if (PARAM_QSEARCH_MATE1 && !ttHit )
 
 				// いまのところ、入れたほうが良いようだ。
 				// play_time = b1000 ,  1631 - 55 - 1314(55.38% R37.54) [2016/08/19]
@@ -955,10 +959,7 @@ namespace YaneuraOu2017Early
 		// このnodeで探索から除外する指し手。ss->excludedMoveのコピー。
 		Move excludedMove = ss->excludedMove;
 
-		// 除外した指し手をxorしてそのままhash keyに使う。
-		// 除外した指し手がないときは、0だから、xorしても0。
-		// ただし、hash keyのbit0は手番を入れることになっているのでここは0にしておく。
-		Key posKey = pos.key() ^ Key(excludedMove << 1);
+		Key posKey = pos.key();
 
 		bool ttHit;    // 置換表がhitしたか
 
@@ -966,17 +967,23 @@ namespace YaneuraOu2017Early
 
 		TTEntry* tte = TT.probe(posKey, ttHit);
 
-		// 置換表の指し手
-		// 置換表にhitしなければMOVE_NONE
+		// excludedMoveがある(singular extension時)は、ttValueとttMoveは無いものとして扱う。
+		// excludedMoveがあるときはfull depth searchしたときもsave()しないので置換表は破壊されない。
+
+		// ToDo: 置換表のlookup自体やらないほうがいいような…。
 
 		// 置換表上のスコア
 		// 置換表にhitしなければVALUE_NONE
-		Value ttValue = ttHit ? value_from_tt(tte->value(), ss->ply) : VALUE_NONE;
 
+		Value ttValue = ttHit && !excludedMove ? value_from_tt(tte->value(), ss->ply) : VALUE_NONE;
+
+		// 置換表の指し手
+		// 置換表にhitしなければMOVE_NONE
 		// RootNodeであるなら、(MultiPVなどでも)現在注目している1手だけがベストの指し手と仮定できるから、
 		// それが置換表にあったものとして指し手を進める。
+
 		Move ttMove = RootNode ? thisThread->rootMoves[thisThread->PVIdx].pv[0]
-					: ttHit    ? pos.move16_to_move(tte->move()) : MOVE_NONE;
+					: ttHit && !excludedMove ? pos.move16_to_move(tte->move()) : MOVE_NONE;
 
 #else
 		TTEntry* tte = nullptr; ttHit = false;
@@ -1548,7 +1555,7 @@ namespace YaneuraOu2017Early
 			// 王手延長
 
 			// 王手となる指し手でSEE >= 0であれば残り探索深さに1手分だけ足す。
-			// また、moveCountPruningでない指し手(置換表の指し手とか)も延長対称。
+			// また、moveCountPruningでない指し手(置換表の指し手とか)も延長対象。
 			// これはYSSの0.5手延長に似たもの。
 			// ※　将棋においてはこれはやりすぎの可能性も..
 
@@ -1663,7 +1670,9 @@ namespace YaneuraOu2017Early
 			// 計算するコストがわりとあるので、これをやってもあまり得にはならない。無効にしておく。
 
 			// 投機的なprefetch
-			// prefetch(TT.first_entry(pos.key_after(move)));
+			// const Key nextKey = pos.key_after(move);
+			// prefetch(TT.first_entry(nextKey));
+			// Eval::prefetch_evalhash(nextKey);
 
 			// legal()のチェック。root nodeだとlegal()だとわかっているのでこのチェックは不要。
 			// 非合法手はほとんど含まれていないからこの判定はdo_move()の直前まで遅延させたほうが得。
@@ -1896,7 +1905,14 @@ namespace YaneuraOu2017Early
 
 					// alpha値を更新したので更新しておく
 					if (PvNode && value < beta)
+					{
 						alpha = value;
+
+						// PvNodeでalpha値を更新した。
+						// このとき相手からの詰みがあるかどうかを調べるなどしたほうが良いなら
+						// ここに書くべし。
+
+					}
 					else
 					{
 						// value >= beta なら fail high(beta cut)
@@ -2312,8 +2328,11 @@ void Thread::search()
 	// 将棋所のコンソールが詰まるので出力を抑制するために、前回の出力時刻を
 	// 記録しておき、そこから一定時間経過するごとに出力するという方式を採る。
 	int lastInfoTime = 0;
+
 	// PVの出力間隔[ms]
-	int pv_interval = Options["PvInterval"];
+	// go infiniteはShogiGUIなどの検討モードで動作させていると考えられるので
+	// この場合は、PVを毎回出力しないと読み筋が出力されないことがある。
+	int pv_interval = Limits.infinite ? 0 : (int)Options["PvInterval"];
 
 	// ---------------------
 	//      variables
@@ -2458,12 +2477,13 @@ void Thread::search()
 					// silent modeなら出力を抑制する。
 					&& !Limits.silent
 					// 将棋所のコンソールが詰まるのを予防するために出力を少し抑制する。
-					&& (rootDepth < 3 || lastInfoTime + pv_interval < Time.elapsed())
+					// また、go infiniteのときは、検討モードから使用しているわけで、PVは必ず出力する。
+					&& (rootDepth < 3 || lastInfoTime + pv_interval <= Time.elapsed())
 					)
 				{
 					// 最後に出力した時刻を記録しておく。
 					lastInfoTime = Time.elapsed();
-					sync_cout << USI::pv(rootPos, rootDepth, alpha, beta) << sync_endl;
+					sync_cout << USI::pv(rootPos, rootDepth, alpha, beta , Limits.bench) << sync_endl;
 				}
 
 				// aspiration窓の範囲外
@@ -2513,14 +2533,27 @@ void Thread::search()
 			{
 				// 停止するときにもPVを出力すべき。(少なくともnode数などは出力されるべき)
 				// (そうしないと正確な探索node数がわからなくなってしまう)
+
+				// ただし、反復深化のiterationを途中で打ち切る場合、PVが途中までしか出力されないので
+				// 1手あたりの秒固定で棋譜解析をさせる場合に短い読み筋が解析棋譜に残ってしまい、よろしくない。
+				// かと言ってstopに対してPVを出力しないと、PvInterval = 300などに設定されていて短い時間で
+				// 指し手を返したときに何も読み筋が出力されなくて困る。
+				// 仕方ないのでpv_interval == 0でかつstopのときは例外的にPVを出力しないことにする。
+
+				//	 && (Signals.stop && !pv_interval)
+
+				// しかし、ShogiGUIの検討モードなど、fail low/fail highでPVをきちんと出力する必要があるので
+				// USE_TT_PVはオンにせざるを得ない。この場合、上記の条件は考慮の必要がない。
+				// (PV用の配列を参照せず、置換表を漁ってPVを出力するため)
+
 				if (Signals.stop ||
-					// MultiPVのときは最後の候補手を求めた直後とする。
-					// ただし、時間が3秒以上経過してからは、MultiPVのそれぞれの指し手ごと。
-					((PVIdx + 1 == multiPV || Time.elapsed() > 3000)
-					 && (rootDepth < 3 || lastInfoTime + pv_interval < Time.elapsed())))
+						// MultiPVのときは最後の候補手を求めた直後とする。
+						// ただし、時間が3秒以上経過してからは、MultiPVのそれぞれの指し手ごと。
+						((PVIdx + 1 == multiPV || Time.elapsed() > 3000)
+						 && (rootDepth < 3 || lastInfoTime + pv_interval <= Time.elapsed() )))
 				{
 					lastInfoTime = Time.elapsed();
-					sync_cout << USI::pv(rootPos, rootDepth, alpha, beta) << sync_endl;
+					sync_cout << USI::pv(rootPos, rootDepth, alpha, beta , Limits.bench) << sync_endl;
 				}
 			}
 
@@ -2628,7 +2661,6 @@ void Thread::search()
 		EasyMove.clear();
 
 }
-
 
 // 探索開始時に呼び出される。
 // この関数内で初期化を終わらせ、slaveスレッドを起動してThread::search()を呼び出す。
@@ -2767,7 +2799,7 @@ void MainThread::think()
 				if (book_move_max)
 				{
 					// 不成の指し手がRootMovesに含まれていると正しく指せない。
-					const auto& move = move_list[prng.rand(book_move_max)];
+					const auto& move = Book::select_book_move(move_list,prng);
 					auto bestMove = move.bestMove;
 					auto it_move = std::find(rootMoves.begin(), rootMoves.end(), bestMove);
 					if (it_move != rootMoves.end())
@@ -2919,7 +2951,7 @@ ID_END:;
 	// ベストな指し手として返すスレッドがmain threadではないのなら、その読み筋は出力していなかったはずなので
 	// ここで読み筋を出力しておく。
 	if (bestThread != this && !Limits.silent)
-		sync_cout << USI::pv(bestThread->rootPos, bestThread->completedDepth, -VALUE_INFINITE, VALUE_INFINITE) << sync_endl;
+		sync_cout << USI::pv(bestThread->rootPos, bestThread->completedDepth, -VALUE_INFINITE, VALUE_INFINITE, Limits.bench) << sync_endl;
 
 	// ---------------------
 	// 指し手をGUIに返す
@@ -2959,7 +2991,7 @@ namespace Learner
 
 	// 学習のための初期化。
 	// Learner::search(),Learner::qsearch()から呼び出される。
-	void init_for_search(Position pos,Stack* ss)
+	void init_for_search(Position& pos,Stack* ss)
 	{
 		memset(ss - 4, 0, 7 * sizeof(Stack));
 

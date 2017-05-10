@@ -44,13 +44,13 @@ void dbg_mean_of(int v) { ++means[0]; means[1] += v; }
 
 void dbg_print() {
 
-  if (hits[0])
-    cerr << "Total " << hits[0] << " Hits " << hits[1]
-    << " hit rate (%) " << fixed << setprecision(3) << (100.0f * hits[1] / hits[0]) << endl;
+	if (hits[0])
+		cerr << "Total " << hits[0] << " Hits " << hits[1]
+		<< " hit rate (%) " << fixed << setprecision(3) << (100.0f * hits[1] / hits[0]) << endl;
 
-  if (means[0])
-    cerr << "Total " << means[0] << " Mean "
-    << (double)means[1] / means[0] << endl;
+	if (means[0])
+		cerr << "Total " << means[0] << " Mean "
+		<< (double)means[1] / means[0] << endl;
 }
 
 // --------------------
@@ -68,16 +68,33 @@ int Timer::elapsed_from_ponderhit() const { return int(Search::Limits.npmsec ? T
 
 const string engine_info() {
 
-  stringstream ss;
-  
-  ss << ENGINE_NAME << ' '
-     << EVAL_TYPE_NAME << ' '
-     << ENGINE_VERSION << setfill('0')
-     << (Is64Bit ? " 64" : " 32")
-     << TARGET_CPU << endl
-     << "id author by yaneurao" << endl;
+	stringstream ss;
 
-  return ss.str();
+	// カレントフォルダに"engine_name.txt"があればその1行目をエンジン名とする機能
+	ifstream ifs("engine_name.txt");
+	if (!ifs.fail())
+	{
+		// 1行目が読み込めなかったときのためにデフォルト値を設定しておく。
+		string str = "default engine";
+		getline(ifs, str);
+		ss << "id name " << str << endl;
+
+		// 2行目が読み込めなかったときのためにデフォルト値を設定しておく。
+		str = "default author";
+		getline(ifs, str);
+		ss << "id author " << str << endl;
+	}
+	else
+	{
+		ss  << "id name " << ENGINE_NAME << ' '
+			<< EVAL_TYPE_NAME << ' '
+			<< ENGINE_VERSION << setfill('0')
+			<< (Is64Bit ? " 64" : " 32")
+			<< TARGET_CPU << endl
+			<< "id author by yaneurao" << endl;
+	}
+
+	return ss.str();
 }
 
 // --------------------
@@ -183,18 +200,22 @@ void prefetch(void*) {}
 
 void prefetch(void* addr) {
 
-// SSEの命令なのでSSE2が使える状況でのみ使用する。
+	// SSEの命令なのでSSE2が使える状況でのみ使用する。
 #ifdef USE_SSE2
 
 #  if defined(__INTEL_COMPILER)
-  // 最適化でprefetch命令を削除するのを回避するhack。MSVCとgccは問題ない。
-  __asm__("");
+	// 最適化でprefetch命令を削除するのを回避するhack。MSVCとgccは問題ない。
+	__asm__("");
 #  endif
 
+	// 1 cache lineのprefetch
+	// 64bytesの系もあるかも知れないが、Stockfishではcache line = 32bytesだと仮定してある。
+	// ちなみにRyzenでは32bytesらしい。
+
 #  if defined(__INTEL_COMPILER) || defined(_MSC_VER)
-  _mm_prefetch((char*)addr, _MM_HINT_T0);
+	_mm_prefetch((char*)addr, _MM_HINT_T0);
 #  else
-  __builtin_prefetch(addr);
+	__builtin_prefetch(addr);
 #  endif
 
 #endif

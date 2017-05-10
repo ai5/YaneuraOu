@@ -98,6 +98,8 @@ namespace USI
 	  // スコアを歩の価値を100として正規化して出力する。
 	std::string score_to_usi(Value v)
 	{
+		ASSERT_LV3(-VALUE_INFINITE < v && v < VALUE_INFINITE);
+
 		std::stringstream s;
 
 		// 置換表上、値が確定していないことがある。
@@ -112,7 +114,7 @@ namespace USI
 		return s.str();
 	}
 
-	std::string pv(const Position& pos, int iteration_depth, Value alpha, Value beta)
+	std::string pv(const Position& pos, int iteration_depth, Value alpha, Value beta , bool bench)
 	{
 		std::stringstream ss;
 		int elapsed = Time.elapsed() + 1;
@@ -127,7 +129,7 @@ namespace USI
 		for (size_t i = 0; i < multiPV; ++i)
 		{
 			// この指し手のpvの更新が終わっているのか
-			bool updated = (i <= PVIdx);
+			bool updated = (i <= PVIdx && rootMoves[i].score != -VALUE_INFINITE);
 
 			if (iteration_depth == ONE_PLY && !updated)
 				continue;
@@ -166,6 +168,14 @@ namespace USI
 
 #ifdef USE_TT_PV
 			// 置換表からPVをかき集めてくるモード
+			// probe()するとTTEntryのgenerationが変わるので探索に影響する。
+			// benchコマンド時、これはまずいのでbenchコマンド時にはこのモードをオフにする。
+			if (bench)
+			{
+				for (Move m : rootMoves[i].pv)
+					ss << " " << m;
+			}
+			else
 			{
 				auto pos_ = const_cast<Position*>(&pos);
 				Move moves[MAX_PLY + 1];
@@ -182,8 +192,9 @@ namespace USI
 					if (found)
 					{
 						// 置換表にはpsudo_legalではない指し手が含まれるのでそれを弾く。
+						// legal()の判定もここでしておく。
 						Move m = pos.move16_to_move(tte->move());
-						if (pos.pseudo_legal(m))
+						if (pos.pseudo_legal(m) && pos.legal(m))
 							moves[ply] = m;
 						else
 							moves[ply] = MOVE_NONE;
@@ -646,7 +657,7 @@ void USI::loop(int argc, char* argv[])
 
 		// 起動時いきなりこれが飛んでくるので速攻応答しないとタイムアウトになる。
 		else if (token == "usi")
-			sync_cout << "id name " << engine_info() << Options << "usiok" << sync_endl;
+			sync_cout << engine_info() << Options << "usiok" << sync_endl;
 
 		// オプションを設定する
 		else if (token == "setoption") setoption_cmd(is);

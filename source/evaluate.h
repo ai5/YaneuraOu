@@ -36,6 +36,11 @@ namespace Eval {
   // あるいは差分計算が不可能なときに呼び出される。
   Value compute_eval(const Position& pos);
 
+#if defined(EVAL_KPPT) && defined(USE_EVAL_HASH)
+  // prefetchする関数
+  void prefetch_evalhash(const Key key);
+#endif
+
   // 評価関数パラメーターのチェックサムを返す。
 #if defined(EVAL_KPPT) || defined(EVAL_KPPT_FAST)
   s32 calc_check_sum();
@@ -138,7 +143,8 @@ namespace Eval {
   {
     // f = friend(≒先手)の意味。e = enemy(≒後手)の意味
 
-    BONA_PIECE_ZERO = 0, // 無効な駒。駒落ちのときなどは、不要な駒をここに移動させる。
+	BONA_PIECE_NOT_INIT = -1, // 未初期化の時の値
+    BONA_PIECE_ZERO = 0,      // 無効な駒。駒落ちのときなどは、不要な駒をここに移動させる。
 
     // --- 手駒
 
@@ -229,6 +235,14 @@ namespace Eval {
   // BonaPiece、f側だけを表示する。
   inline std::ostream& operator<<(std::ostream& os, ExtBonaPiece bp) { os << bp.fb; return os; }
 
+  // 駒が今回の指し手によってどこからどこに移動したのかの情報。
+  // 駒はExtBonaPiece表現であるとする。
+  struct ChangedBonaPiece
+  {
+	  ExtBonaPiece old_piece;
+	  ExtBonaPiece new_piece;
+  };
+
   // KPPテーブルの盤上の駒pcに対応するBonaPieceを求めるための配列。
   // 例)
   // BonaPiece fb = kpp_board_index[pc].fb + sq; // 先手から見たsqにあるpcに対応するBonaPiece
@@ -242,8 +256,8 @@ namespace Eval {
   struct EvalList {
 
     // 評価関数(FV38型)で用いる駒番号のリスト
-    inline BonaPiece* piece_list_fb() const { return const_cast<BonaPiece*>(pieceListFb); }
-    inline BonaPiece* piece_list_fw() const { return const_cast<BonaPiece*>(pieceListFw); }
+	BonaPiece* piece_list_fb() const { return const_cast<BonaPiece*>(pieceListFb); }
+    BonaPiece* piece_list_fw() const { return const_cast<BonaPiece*>(pieceListFw); }
 
     // 指定されたpiece_noの駒をExtBonaPiece型に変換して返す。
     ExtBonaPiece bona_piece(PieceNo piece_no) const
