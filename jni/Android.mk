@@ -45,11 +45,13 @@ LOCAL_SRC_FILES := ../source/bitboard.cpp ../source/misc.cpp ../source/movegen.c
            ../source/extra/long_effect.cpp ../source/extra/mate1ply_without_effect.cpp ../source/extra/mate1ply_with_effect.cpp \
            ../source/extra/move_picker_2016Q2.cpp \
            ../source/extra/move_picker_2016Q3.cpp \
+           ../source/extra/move_picker_2017Q2.cpp \
            ../source/extra/see.cpp \
            ../source/extra/test_cmd.cpp ../source/extra/timeman.cpp \
            ../source/engine/classic-tce-engine/classic-tce-search.cpp \
            ../source/engine/2016-mid-engine/2016-mid-search.cpp \
            ../source/engine/2016-late-engine/2016-late-search.cpp \
+           ../source/engine/2017-early-engine/2017-early-search.cpp \
            ../source/engine/user-engine/user-search.cpp
 
 include $(BUILD_EXECUTABLE)

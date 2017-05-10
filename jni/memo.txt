@@ -96,3 +96,34 @@ Total time (ms) : 44734
 Nodes searched  : 16760556
 Nodes/second    : 374671
 
+ÅZ2017/5/10
+
+ÅEwin x64
+info depth 15 seldepth 35 score cp -4285 nodes 3592832 nps 424333 hashfull 653 time 8467 pv G*1c 4b3b S*3a 3b3a N*4e 3g3h 2e2f 2g2f P*3g 3h3i 6f3i+ 2i3i G*3h 9h3h 3g3h+ 3i3h R*5h 3h2g 5h5g+ 2g1h 4e3g+ B*3d P*2c 2f3g 5g3g 3a2a 1b2a R*4a P*3a
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 20604
+Nodes searched  : 7879849
+Nodes/second    : 382442
+
+
+ÅEx86_64
+info depth 15 seldepth 35 score cp -4285 nodes 3592832 nps 161657 hashfull 653 time 22225 pv G*1c 4b3b S*3a 3b3a N*4e 3g3h 2e2f 2g2f P*3g 3h3i 6f3i+ 2i3i G*3h 9h3h 3g3h+ 3i3h R*5h 3h2g 5h5g+ 2g1h 4e3g+ B*3d P*2c 2f3g 5g3g 3a2a 1b2a R*4a P*3a
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 52286
+Nodes searched  : 7879849
+Nodes/second    : 150706
+
+ÅEarm64-v8a
+info depth 15 seldepth 35 score cp -4285 nodes 3592832 nps 155003 hashfull 653 time 23179 pv G*1c 4b3b S*3a 3b3a N*4e 3g3h 2e2f 2g2f P*3g 3h3i 6f3i+ 2i3i G*3h 9h3h 3g3h+ 3i3h R*5h 3h2g 5h5g+ 2g1h 4e3g+ B*3d P*2c 2f3g 5g3g 3a2a 1b2a R*4a P*3a
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 56293
+Nodes searched  : 7879849
+Nodes/second    : 139979
+
+
