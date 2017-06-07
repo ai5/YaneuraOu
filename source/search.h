@@ -4,18 +4,8 @@
 #include <atomic>
 
 #include "position.h"
+#include "move_picker.h"
 #include "misc.h"
-
-// CounterMoveStatsの前方宣言。
-#if defined(USE_MOVE_PICKER_2016Q2) || defined(USE_MOVE_PICKER_2016Q3)
-template<typename T, bool CM> struct Stats;
-typedef Stats<Value, true> CounterMoveStats;
-#endif
-
-#if defined(USE_MOVE_PICKER_2017Q2)
-template<typename T> struct Stats;
-typedef Stats<int> CounterMoveStats;
-#endif
 
 // 探索関係
 namespace Search {
@@ -60,9 +50,8 @@ namespace Search {
 		LimitsType() {
 			nodes = time[WHITE] = time[BLACK] = inc[WHITE] = inc[BLACK] = byoyomi[WHITE] = byoyomi[BLACK] = npmsec
 				= depth = movetime = mate = infinite = ponder = rtime = 0;
-			silent = bench = false;
+			silent = bench = ponder_mode = consideration_mode = false;
 			max_game_ply = 100000;
-			ponder_mode = false;
 			enteringKingRule = EKR_NONE;
 		}
 
@@ -124,11 +113,14 @@ namespace Search {
 		// このときPVを出力しない。
 		bool silent;
 
-		// ベンチマークモード(このときPVの出力時に置換表にアクセスしない)
-		bool bench;
-
 		// 試合開始後、ponderが一度でも送られてきたか
 		bool ponder_mode;
+
+		// 検討モード用のPVを出力するのか
+		bool consideration_mode;
+
+		// ベンチマークモード(このときPVの出力時に置換表にアクセスしない)
+		bool bench;
 	};
 
 	struct SignalsType {
@@ -164,7 +156,7 @@ namespace Search {
 #if defined (PER_STACK_HISTORY)
 
 #if defined (USE_MOVE_PICKER_2017Q2)
-		int history;			// 一度計算したhistoryの合計値をcacheしておくのに用いる。
+		int statScore;			// 一度計算したhistoryの合計値をcacheしておくのに用いる。
 #else
 		Value history;			// 一度計算したhistoryの合計値をcacheしておくのに用いる。
 #endif
@@ -179,8 +171,10 @@ namespace Search {
 
 		int moveCount;          // このnodeでdo_move()した生成した何手目の指し手か。(1ならおそらく置換表の指し手だろう)
 
-#if defined (USE_MOVE_PICKER_2016Q2) || defined (USE_MOVE_PICKER_2016Q3) || defined(USE_MOVE_PICKER_2017Q2)
+#if defined (USE_MOVE_PICKER_2016Q2) || defined (USE_MOVE_PICKER_2016Q3)
 		CounterMoveStats* counterMoves; // MovePickerから使いたいのでここにCounterMoveStatsを格納することになった。
+#elif defined(USE_MOVE_PICKER_2017Q2)
+		PieceToHistory* history;		// history絡み、refactoringにより名前が変わった。
 #endif
 	};
 

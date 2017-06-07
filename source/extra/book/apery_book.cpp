@@ -1,4 +1,4 @@
-/*
+﻿/*
   Apery, a USI shogi playing engine derived from Stockfish, a UCI chess playing engine.
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
@@ -25,12 +25,15 @@
 
 namespace Book {
 
-MT64bit AperyBook::mt64bit_; // ��Ղ�hash�����p�Ȃ̂ŁAseed�͌Œ�Ńf�t�H���g�l���g���B
 Key AperyBook::ZobPiece[PIECE_NB - 1][SQ_NB];
-Key AperyBook::ZobHand[PIECE_HAND_NB - 1][19]; // ������̓����ނ̋�̐�����
+Key AperyBook::ZobHand[PIECE_HAND_NB - 1][19]; // 持ち駒の同一種類の駒の数ごと
 Key AperyBook::ZobTurn;
 
 void AperyBook::init() {
+	// 定跡のhash生成用なので、seedは固定でデフォルト値を使う。
+	// 未初期化乱数でhashが毎回変更されるのを防ぐため、init()が呼ばれる度に乱数は初期化する。
+	// （そもそもinit()を呼ぶのは1回きりでも良いのだけど、今の実装ではコンストラクタから毎回呼ばれるので。）
+	MT64bit mt64bit_;
     for (Piece p = PIECE_ZERO; p < PIECE_NB - 1; ++p) {
         for (Square sq = SQ_ZERO; sq < SQ_NB; ++sq)
             ZobPiece[p][sq] = mt64bit_.random() * (p != NO_PIECE);

@@ -22,13 +22,20 @@
 #include "../position.h"
 #include "../misc.h"
 
+// EvalShareの機能を使うために必要
+#if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_WIN32)
+#include <codecvt>	 // mkdirするのにwstringが欲しいのでこれが必要
+#include <locale>    // wstring_convertにこれが必要。
+#include <windows.h>
+#endif
+
 using namespace std;
 
 namespace Eval
 {
 
 // 評価関数パラメーター
-#if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_MSC_VER)
+#if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_WIN32)
 
 	// 共有メモリ上に確保する場合。
 
@@ -49,6 +56,11 @@ namespace Eval
 	// 評価関数ファイルを読み込む
 	void load_eval_impl()
 	{
+		// ToDo : Aperyの新形式(Apery WCSC27)の評価関数ファイル、KK/KKPが16bitになっていて、
+		//   評価関数のファイル名が同名であり、ファイルサイズが小さい。このときread()は失敗して
+		//   エラーになるはずだが、このときのエラーをinfo stringで出力しても、読まないユーザーが多い。
+		//   ShogiGUIはinfo stringで出力してもそれを表示しないという問題もある。
+		//   USIプロトコルでエラー出力の仕様が定められていないのがおかしいのだが…。
 		{
 			// KK
 			std::ifstream ifsKK(path_combine((string)Options["EvalDir"], KK_BIN), std::ios::binary);
@@ -167,28 +179,27 @@ namespace Eval
 	}
 
 
-	s32 calc_check_sum()
+	u64 calc_check_sum()
 	{
-		s32 sum = 0;
+		u64 sum = 0;
 		
-		auto add_sum = [&](s32*ptr , size_t t)
+		auto add_sum = [&](u32*ptr , size_t t)
 		{
 			for (size_t i = 0; i < t; ++i)
 				sum += ptr[i];
 		};
 		
-		add_sum(reinterpret_cast<s32*>(kk) , sizeof(kk ) / sizeof(s32));
-		add_sum(reinterpret_cast<s32*>(kkp), sizeof(kkp) / sizeof(s32));
-		add_sum(reinterpret_cast<s32*>(kpp), sizeof(kpp) / sizeof(s32));
+		add_sum(reinterpret_cast<u32*>(kk) , sizeof(kk ) / sizeof(u32));
+		add_sum(reinterpret_cast<u32*>(kkp), sizeof(kkp) / sizeof(u32));
+		add_sum(reinterpret_cast<u32*>(kpp), sizeof(kpp) / sizeof(u32));
 
 		return sum;
 	}
 
 
-#if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_MSC_VER)
+#if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_WIN32)
 	// 評価関数の共有を行うための大掛かりな仕組み
-
-#include <windows.h>
+	// gccでコンパイルするときもWindows環境であれば、これが有効になって欲しいので defined(_WIN32) で判定。
 
 	void load_eval()
 	{
@@ -204,7 +215,7 @@ namespace Eval
 			}
 			else
 			{
-				kk_ = &(shared_eval_ptr->kk_);
+				kk_  = &(shared_eval_ptr->kk_ );
 				kkp_ = &(shared_eval_ptr->kkp_);
 				kpp_ = &(shared_eval_ptr->kpp_);
 
@@ -255,7 +266,7 @@ namespace Eval
 			}
 			else
 			{
-				kk_ = &(shared_eval_ptr->kk_);
+				kk_  = &(shared_eval_ptr->kk_ );
 				kkp_ = &(shared_eval_ptr->kkp_);
 				kpp_ = &(shared_eval_ptr->kpp_);
 
@@ -266,8 +277,7 @@ namespace Eval
 					// このタイミングで評価関数バイナリを読み込む
 					load_eval_impl();
 
-					auto check_sum = calc_check_sum();
-					sync_cout << "info string created shared eval memory. Display : check_sum = " << std::hex << check_sum << std::dec << sync_endl;
+					sync_cout << "info string created shared eval memory." << sync_endl;
 
 				}
 				else {
@@ -285,7 +295,7 @@ namespace Eval
 		// 1) ::ReleaseMutex()
 		// 2) ::UnmapVieOfFile()
 		// が必要であるが、1),2)がプロセスが解体されるときに自動でなされるので、この処理は特に入れない。
-	}
+
 #else
 
 	// 評価関数のプロセス間共有を行わないときは、普通に
@@ -293,9 +303,30 @@ namespace Eval
 	void load_eval()
 	{
 		load_eval_impl();
-	}
-
 #endif
+
+		// 共有メモリを使う/使わないときの共通の処理
+		auto check_sum = calc_check_sum();
+
+		// 評価関数ファイルの正体
+		string softname = "unknown";
+
+		// ソフト名自動判別
+		map<u64, string> list = {
+			{ 0x7171a5469027ebf , "ShinYane(20161010)" } ,
+			{ 0x71fc7fd40c668cc , "Ukamuse(sdt4)" } ,
+
+			{ 0x65cd7c55a9d4cd9 , "elmo(WCSC27)" } ,
+			{ 0x3aa68b055a020a8 , "Yomita(WCSC27)" } ,
+			{ 0x702fb2ee5672156 , "Qhapaq(WCSC27)" } ,
+			{ 0x6c54a1bcb654e37 , "tanuki(WCSC27)" } ,
+		};
+		if (list.count(check_sum))
+			softname = list[check_sum];
+
+		sync_cout << "info string Eval Check Sum = " << std::hex << check_sum << std::dec
+				  << " , Eval File = " << softname << sync_endl;
+	}
 
 	// KP,KPP,KKPのスケール
 	const int FV_SCALE = 32;
@@ -306,7 +337,7 @@ namespace Eval
 	// なので、この関数の最適化は頑張らない。
 	Value compute_eval(const Position& pos)
 	{
-#if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_MSC_VER)
+#if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_WIN32)
 		// shared memoryを用いているときには、is_ready()で評価関数を読み込み、
 		// 初期化してからしかcompute_eval()を呼び出すことは出来ない。
 		ASSERT_LV1(kk_ != nullptr);
@@ -515,7 +546,7 @@ namespace Eval
 
 	void evaluateBody(const Position& pos)
 	{
-		// 過去に遡って差分を計算していく。
+		// 一つ前のノードからの評価値の差分を計算する。
 
 		auto now = pos.state();
 		auto prev = now->previous;
@@ -534,6 +565,7 @@ namespace Eval
 		{
 			// 全計算
 			compute_eval(pos);
+
 			return;
 			// 結果は、pos->state().sumから取り出すべし。
 		}
@@ -817,27 +849,42 @@ namespace Eval
 		if (sum.evaluated())
 			return Value(sum.sum(pos.side_to_move()) / FV_SCALE);
 
-#ifdef USE_EVAL_HASH
-		// evaluate hash tableにはあるかも。
+#if defined(USE_GLOBAL_OPTIONS)
+		// GlobalOptionsでeval hashを用いない設定になっているなら
+		// eval hashへの照会をskipする。
+		if (!GlobalOptions.use_eval_hash)
+		{
+			evaluateBody(pos);
+			ASSERT_LV5(pos.state()->materialValue == Eval::material(pos));
+			return Value(sum.sum(pos.side_to_move()) / FV_SCALE);
+		}
+#endif
 
+#if defined ( USE_EVAL_HASH )
 		// 手番を消した局面hash key
 		const Key keyExcludeTurn = st->key() >> 1;
+
+		// evaluate hash tableにはあるかも。
+
+		//		cout << "EvalSum " << hex << g_evalTable[keyExcludeTurn] << endl;
 		EvalSum entry = *g_evalTable[keyExcludeTurn];   // atomic にデータを取得する必要がある。
 		entry.decode();
 		if (entry.key == keyExcludeTurn)
 		{
-//			dbg_hit_on(true);
+			//	dbg_hit_on(true);
+
 			// あった！
 			sum = entry;
 			return Value(entry.sum(pos.side_to_move()) / FV_SCALE);
 		}
-//		dbg_hit_on(false);
+		//		dbg_hit_on(false);
+
 #endif
 
 		// 評価関数本体を呼び出して求める。
 		evaluateBody(pos);
 
-#ifdef USE_EVAL_HASH
+#if defined ( USE_EVAL_HASH )
 		// せっかく計算したのでevaluate hash tableに保存しておく。
 		sum.key = keyExcludeTurn;
 		sum.encode();

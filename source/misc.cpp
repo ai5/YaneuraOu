@@ -27,6 +27,7 @@ extern "C" {
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <ctime>    // std::ctime()
 
 #include "misc.h"
 #include "thread.h"
@@ -62,6 +63,22 @@ Timer Time;
 int Timer::elapsed() const { return int(Search::Limits.npmsec ? Threads.nodes_searched() : now() - startTime); }
 int Timer::elapsed_from_ponderhit() const { return int(Search::Limits.npmsec ? Threads.nodes_searched()/*これ正しくないがこのモードでponder使わないからいいや*/ : now() - startTimeFromPonderhit); }
 
+// 現在時刻を文字列化したもを返す。(評価関数の学習時などに用いる)
+std::string now_string()
+{
+	// std::ctime(), localtime()を使うと、MSVCでセキュアでないという警告が出る。
+	// C++標準的にはそんなことないはずなのだが…。
+
+#if defined(_MSC_VER)
+	// C4996 : 'ctime' : This function or variable may be unsafe.Consider using ctime_s instead.
+#pragma warning(disable : 4996)
+#endif
+
+	auto now = std::chrono::system_clock::now();
+	auto tp = std::chrono::system_clock::to_time_t(now);
+	return string(std::ctime(&tp));
+}
+
 // --------------------
 //  engine info
 // --------------------
@@ -90,7 +107,11 @@ const string engine_info() {
 			<< EVAL_TYPE_NAME << ' '
 			<< ENGINE_VERSION << setfill('0')
 			<< (Is64Bit ? " 64" : " 32")
-			<< TARGET_CPU << endl
+			<< TARGET_CPU
+#if defined(FOR_TOURNAMENT)
+			<< " TOURNAMENT"
+#endif
+			<< endl 
 			<< "id author by yaneurao" << endl;
 	}
 
@@ -135,32 +156,38 @@ struct Tie : public streambuf
 };
 
 struct Logger {
-  static void start(bool b)
-  {
-    static Logger log;
+	static void start(bool b)
+	{
+		static Logger log;
 
-    if (b && !log.file.is_open())
-    {
-      log.file.open("io_log.txt", ifstream::out);
-      cin.rdbuf(&log.in);
-      cout.rdbuf(&log.out);
-      cout << "start logger" << endl;
-    } else if (!b && log.file.is_open())
-    {
-      cout << "end logger" << endl;
-      cout.rdbuf(log.out.buf);
-      cin.rdbuf(log.in.buf);
-      log.file.close();
-    }
-  }
+		if (b && !log.file.is_open())
+		{
+			log.file.open("io_log.txt", ifstream::out);
+			cin.rdbuf(&log.in);
+			cout.rdbuf(&log.out);
+			cout << "start logger" << endl;
+		}
+		else if (!b && log.file.is_open())
+		{
+			cout << "end logger" << endl;
+			cout.rdbuf(log.out.buf);
+			cin.rdbuf(log.in.buf);
+			log.file.close();
+		}
+	}
 
 private:
-  Tie in, out;   // 標準入力とファイル、標準出力とファイルのひも付け
-  ofstream file; // ログを書き出すファイル
+	Tie in, out;   // 標準入力とファイル、標準出力とファイルのひも付け
+	ofstream file; // ログを書き出すファイル
 
-  Logger() : in(cin.rdbuf(),file.rdbuf()) , out(cout.rdbuf(),file.rdbuf()) {}
-  ~Logger() { start(false); }
+	// clangだとここ警告が出るので一時的に警告を抑制する。
+#pragma warning (disable : 4068) // MSVC用の不明なpragmaの抑制
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wuninitialized"
+	Logger() : in(cin.rdbuf(), file.rdbuf()), out(cout.rdbuf(), file.rdbuf()) {}
+#pragma clang diagnostic pop
 
+	~Logger() { start(false); }
 };
 
 void start_logger(bool b) { Logger::start(b); }
@@ -172,19 +199,31 @@ void start_logger(bool b) { Logger::start(b); }
 // ファイルを丸読みする。ファイルが存在しなくともエラーにはならない。空行はスキップする。
 int read_all_lines(std::string filename, std::vector<std::string>& lines)
 {
-  fstream fs(filename,ios::in);
-  if (fs.fail())
-    return 1; // 読み込み失敗
+	fstream fs(filename, ios::in);
+	if (fs.fail())
+		return 1; // 読み込み失敗
 
-  while (!fs.fail() && !fs.eof())
-  {
-    std::string line;
-    getline(fs,line);
-    if (line.length())
-      lines.push_back(line);
-  }
-  fs.close();
-  return 0;
+	while (!fs.fail() && !fs.eof())
+	{
+		std::string line;
+		getline(fs, line);
+		if (line.length())
+			lines.push_back(line);
+	}
+	fs.close();
+	return 0;
+}
+
+// --------------------
+//       Math
+// --------------------
+
+double Math::sigmoid(double x) {
+	return 1.0 / (1.0 + std::exp(-x));
+}
+
+double Math::dsigmoid(double x) {
+	return sigmoid(x) * (1.0 - sigmoid(x));
 }
 
 // --------------------
@@ -203,6 +242,10 @@ void prefetch(void* addr) {
 	// SSEの命令なのでSSE2が使える状況でのみ使用する。
 #ifdef USE_SSE2
 
+	// 下位5bitが0でないような中途半端なアドレスのprefetchは、
+	// そもそも構造体がalignされていない可能性があり、バグに違いない。
+	ASSERT_LV3(((u64)addr & 0x1f) == 0);
+
 #  if defined(__INTEL_COMPILER)
 	// 最適化でprefetch命令を削除するのを回避するhack。MSVCとgccは問題ない。
 	__asm__("");
@@ -214,6 +257,7 @@ void prefetch(void* addr) {
 
 #  if defined(__INTEL_COMPILER) || defined(_MSC_VER)
 	_mm_prefetch((char*)addr, _MM_HINT_T0);
+//	cout << hex << (u64)addr << endl;
 #  else
 	__builtin_prefetch(addr);
 #  endif
@@ -223,7 +267,11 @@ void prefetch(void* addr) {
 
 #endif
 
-void prefetch2(void* addr) {
+void prefetch2(void* addr)
+{
+	// Stockfishのコードはこうなっている。
+	// cache lineが32byteなら、あと2回やる必要があるように思うのだが…。
+
 	prefetch(addr);
 	prefetch((uint8_t*)addr + 64);
 }

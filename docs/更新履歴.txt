@@ -2,6 +2,242 @@
 やねうら王 更新履歴
 
 
+■　2017/06/02 V4.64
+
+・misc.cppがMSVCでコンパイルしたときに警告出てたの修正。
+・learn.h全体をifdef EVAL_LEARNで囲うようにした。
+・clangでコンパイルした実行ファイルを配布。
+
+
+■　2017/06/01
+
+・clangでwarning出るのでkey128.h少し修正。
+・Makefile、clang用に修正。msys2用のclangでwarning出さずにコンパイルが通ることを確認。
+・Makefile、デフォルトでclangでコンパイルすることに変更。
+
+
+■　2017/05/31
+
+・学習時に用いるEval::Weightをlearn/learning_tools.hとして切り離す。
+・学習でSGDを使用するときにメモリ大量に使ってたの修正。
+・学習時に用いる重み配列を3角配列化した。(デバッグ中)
+・3角配列の学習部、添字間違っていたの修正。
+・3角配列でうまく学習できたので、defaultで有効にする。
+・SGDでrand(3)==0ときだけ値を動かすコード、削除。
+・clangでコンパイルしたときのwarning、いくつか出ないようにした。
+・使ってないinclude文削除。
+
+
+■　2017/05/29 V4.63
+
+・学習式がelmo(WCSC27)のとき、LAMBDAの値を指定できるようにした。
+・learn.hでAdaGradとSGDとを選択できるようにした。
+・half float実装
+・SlowMoverオプション導入。
+・MultiThinkの乱数取得コード修正。(clangでコンパイルが通らなかったらしい)
+・学習部でSGDを選択したときにそれを出力していなかったの修正。
+
+
+■　2017/05/28 V4.62
+
+・トーナメント用実行ファイル、コンパイルエラーになっていたの修正。
+・SfenWriterのデストラクタでclose()を呼び出すように修正。
+・ConsiderationModeのとき、置換表からPVをかき集めるように変更。
+・PVの出力のコード、refactoring。
+・Stockfishに合わせて、from_to()導入。
+・Stockfish : History code rewrite
+・新しい学習部にSGDでの更新実装。学習時の評価関数の保存は4.5億局面に1回に変更。
+
+
+■　2017/05/26
+
+・学習に関するオプション項目、大幅に整理。学習部の調整。
+・LearnFloatTypeまわりでstd::atomicを導入しなくても良いことを説明するコメント追加。
+・学習部、コメント追加。学習時のオプションなど整理。
+・学習部のelmoの更新式、内分をとる形に変形。
+・学習時の誤差の表示名変更。
+
+
+■　2017/05/25
+
+・Windows用のmakefileでstacksizeを大きめに確保するように変更。(mizarさん)
+・EVAL_LEARNはデフォルトでオフにする。Makefile修正した。
+・学習部、かなりデバッグできた。(実際に学習を回してテスト中)
+・GlobalOptions導入。USE_FALSE_PROBE_IN_TT削除。
+
+
+■　2017/05/24
+
+・学習部のコード、刷新した。動作確認はまだ。
+※　開発者の方は、しばらくはApery(elmo)の学習部をお使いください。
+
+
+■　2017/05/22
+
+・C++11でコンパイルが通るように修正。
+・gensfenのときにhashに一致したときにそれ以前の勝敗の情報が間違っていたのを修正。
+・gensfenの2駒交換のコード、削除。効果なさげだしコードが複雑になる。
+・learnからLEARN_UPDATE_EVERYTIME関連、削除。コードが複雑化する。
+・learn絡みのKPP_MIRROR_WRITEとKKP_MIRROR_WRITE関連のコード削除。これはデフォルトでオンでいい。
+
+
+■　2017/05/21 V4.61
+
+・learner.cppのフォルダ内のファイル取得、gccのためにwindows.hを用いて書き直した。→msys2でうまく動かない
+・gensfenコマンドでgamePlyを書き出すようにした。
+・learnで用いていたrmse計算用の損失関数、変更した。
+・gcc用のフォルダの作成、ファイルの列挙のコード、修正。
+・学習用のビルドオプションをMakefileに追加。
+・対局用に公開している実行ファイル、openmpなしでコンパイルするように変更。
+・learn.hから2016LATE用の学習オプション削除。
+・gensfenコマンドでmatedのときに局面を書き出していなかったの修正。
+・gensfenコマンドでのrandom moveの条件、緩和。
+・詰みの局面を渡されたときにinfo stringでmate 1と出力していたの修正。
+	USIプロトコルは、詰みのときには"info string score mate -0"と出力するときちんと定めるべき！
+
+
+■　2017/05/20
+
+・BetweenBB、シュリンクした。
+・see_ge()でPosition::piece_on(SQ_NB)にアクセスしてたのでpiece_on側を修正。
+・mate1ply()で用いるbitboardの添字の順番入れ替え。
+・Positionの各メンバにASSERT追加。
+・Position::moved_piece_before()高速化
+・CheckCandidateBB、少しシュリンクした。
+・engine_invoker5.py、パラメーターの型を間違っていたところ修正。
+・engine_invoker5.py、先手の勝率の計算が間違っていたのを修正。
+・elmo(WCSC27) learning method support
+・packed sfen以外での教師局面の書き出しコード、使ってないので削除する。
+
+
+■　2017/05/19 V4.60
+
+・PieceNoをu8に変更。
+・Stockfish : Fix memory access in Search::clear()
+・EvalList、refactoringした。
+・解説.txtにトーナメント用実行ファイルの説明追加。
+・Position.hで使っているSlide、u8に変更など。
+・LineBB配列、シュリンクした。
+・min_attacker()高速化
+・RookEffectRank → RookRankEffectにrename
+
+
+■　2017/05/18 V4.59
+
+・do_move_impl()での王手している駒の利きの更新を最適化。
+・UpdateBitboards()を重複してやっている箇所があったので修正。
+・Position::put_piece_simple()追加。少しdo_move()を高速化。
+・VC++でSSE2用のコンパイル時にwarning出てたの修正。
+・color_of()少し高速化。
+・mate1plyの実装、templateにして先後区別する。
+・Position::piece_bb →　byTypeBBに、occupied → byColorBBにrename。
+・do_move()のときのmemcpy()をやらないようにした。
+・玉が盤上にいないときにrookEffectがアクセス違反になっていたの修正
+・mate engineに対するVC++のプロパティシート追加
+・KEEP_PIECE_IN_GENERATE_MOVESが定義されていないときのundo_move()の動作修正
+・LONG_EFFECT_LIBRARYをdefineしたときにコンパイルエラーになっていたの修正
+・トーナメント用のbuild、FOR_TOURNAMENTオプション追加。AVX2用でEVAL_HASH大きめ。EVAL_LEARN、TEST_CMD使用不可。
+
+
+■　2017/05/17 V4.58
+
+・lanceEffect()はrookFileEffect()を使うように変更。
+・飛車の利きを求めるための利きテーブルを無くした。
+・飛車の利き用のテーブルさらに小さくした。
+・角の利き用のテーブル小さくした。
+・working memory、だいぶ減ったかも。置換表を小さくすればいままでせ動かなかったスマホでも動くかも。
+
+
+■　2017/05/16
+
+・Learner::search、max_game_plyの値を変更しないようにした。
+・Limits.max_game_plyに一本化していたの、やめた。
+・MaxMovesToDrawを0に設定されたとき内部的にINT_MAXにしていたの、100000に変更。
+・is_ready()のなかでSignals.stopなどの変数を初期化するように変更。
+・Stockfish
+	- Execute an implied ucinewgame at startup
+・position::gives_check() リファクタリング。
+・position.cpp reformatting
+・ベンチマークだけTEST_CMDから移動させる。これは常に必要。
+・reformatting position.h
+・step effectリファクタリング
+・Position::attackers_to()、高速化。
+・prefetch()にassert追加。
+・NextSquareテーブル、u8に変更。
+・mate1ply_without_effect.cpp reformatting
+・pawnEffect(Color,Bitboard)追加。Shift<>(Bitboard)削除。
+・歩の打てるところを調べるコード、テーブルを2つに分割。先後の区別なしにする。
+・Bitboard(u64,u64)のSSE2用コードを追加。
+
+
+■　2017/05/15 V4.57
+
+・検討モード用の読み筋出力として、ConsiderationMode "検討モード用のPV出力" を用意。
+・テスト用に"test search"コマンド追加。
+・SILVER_HDK、GOLDS_HDK追加。
+
+
+■　2017/05/14 V4.56
+
+・定跡読み込み部、リファクタリングしたときに若干壊してたの修正。(定跡ファイルの対局途中での変更ができなかった)
+・Bitboardクラス、リファクタリング。
+	- Bitboard::test()追加。
+	- Bitboard::test()追加。
+	- Bitboard::extract64(),insert64()追加。
+	- FOREACH_BB、修正。
+・VC++のプロジェクト設定、現行のやねうら王のプロジェクトでないものは削除する。(切り替えするとき邪魔なので)
+
+
+■　2017/05/13 V4.55
+
+・配布している実行ファイルで同じ定跡の指し手が選ばれる問題修正。(MSYS2のgccのランタイムの問題らしい)
+・乱数シードとしてstd::chrono::high_resolution_clock::now().time_since_epoch().count()の時刻も足すことにした。
+・定跡選択部、リファクタリング。
+・定跡部で指し手を選ぶ時に、いくつからいくつに減らしたかを出力するようにした。
+
+
+■　2017/05/12 V4.54
+
+- Stockfish最新版にキャッチアップ
+	- Default argument for see_ge()
+	- Remove int to int conversion, unused include.
+	- Move Pieces[] out of global visibility
+	- Avoid *begin always being included in the sorted list regardless of its value.
+	- use int16_t for histories
+・詰将棋エンジンのバグ修正と、テストコマンド追加。(thx. tanuki-さん)
+・比較実験用のKKPT型評価関数追加。
+・HistoryStats、リファクタリング。
+・定跡の指し手の選択部、リファクタリング。(何か壊しているかも)
+
+
+■　2017/05/11 V4.53
+
+・Learner::qsearch() および Learner::search() でnullポインタアクセスする件修正。(thx. tanuki-さん)
+・王手のかかっている局面をPosition::set_from_packed_sfen()で読むと状態が不正になる件修正。(thx. tanuki-さん)
+・定跡を選択するときのConsiderBookMoveCountの処理が間違っていたので修正。
+・各CPU用のMakefile修正。nosseはx86用にコンパイルする環境が必要なので後回し。
+・32bit用にコンパイルするときはEVAL_LEARNをオフにするようにした。
+・Makefile、CFLAGSとして-D_WIN64指定しないように変更。
+・Makefileにother(ARM用など)を追加。
+・VSのプロジェクト設定のカスケーディング追加。(thx. mizarさん)
+	- [VisualStudioのプロパティシートのメモ](http://qiita.com/bigengelt/items/31c315cf624985a6a47c)
+・定跡の指し手選択部、少しリファクタリングした。
+
+
+■　2017/05/10 V4.52
+
+・KP絶対を用いた進行度推定ルーチン追加。(tanuki-さん)
+・進行度絡みのファイルの整理。move_picker絡みのファイルの整理。
+・math.h/cppの中身をmisc.h/cppのなかに移動
+・calc_check_sum()の返し値をu64に変更。
+・評価関数ファイルの自動判定機能追加。
+	- 真やねうら王20161010 , 浮かむ瀬(sdt4) , elmo(WCSC27) , 読み太(WCSC27) , Qhapaq(WCSC27) , tanuki(WCSC27)
+・eval_sum、u64に変え忘れていた箇所修正。
+・共有メモリを使わないときにもeval check sumが出力されるように。
+・gccでコンパイルするときもWindows環境であれば、評価関数を共有メモリに配置するように。
+・各CPU用の実行ファイルの自動生成バッチファイルを作成した。
+
+
 ■　2017/05/09 V4.51
 
 ・USE_LARGE_EVAL_HASH導入。

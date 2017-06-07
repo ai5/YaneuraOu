@@ -1,4 +1,4 @@
-/*
+ï»¿/*
   Apery, a USI shogi playing engine derived from Stockfish, a UCI chess playing engine.
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
@@ -49,7 +49,6 @@ public:
 private:
     static void init();
 
-    static MT64bit mt64bit_; // ’èÕ‚Ìhash¶¬—p‚È‚Ì‚ÅAseed‚ÍŒÅ’è‚ÅƒfƒtƒHƒ‹ƒg’l‚ğg‚¤B
     std::vector<AperyBookEntry> empty_entries_;
     std::unordered_map<Key, std::vector<AperyBookEntry>> book_;
 

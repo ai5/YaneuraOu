@@ -1,16 +1,1083 @@
-﻿# ToDO
+﻿
+# ToDO
 
-- 読み筋出力がおかしいらしい件、調査する。
-- pull req取り込む。
-- gccでコンパイル、-fltoを指定するとセグフォで落ちる件、調査する。
+- 学習式 定数1/600→1/200,1/400とか試す。
+- EVAL_NO_USEの処理削除して、Position::do_move()単純化する。
+- EvalList、refactoringする。
+- evaluate KPPT 16bit化するか、上位16bitに進行度入れる。
+- evaluate()、無駄なBonaPieceの番号詰める。
+- PPAP評価関数 5*5
+
+- Stockfish
+	- 探索の性質が変わる変更はあとでまとめてやる。学習時の教師局面の性質が変わるのでその検証も大変。
+		- Evasion Pruning Tweak
+			- https://github.com/official-stockfish/Stockfish/commit/1d31065e1d1f04ecf47fc959523c560e8657fbfa
 - 詰将棋探索エンジン、他の探索部から呼び出せるように改良する。
-- 自己対戦フレームワーク、改良。
-- 評価関数の判定機能追加。
-- 評価関数の形を変える。
-- elmoの学習ルーチン、取り込む。
+	- 探索から呼び出しても強くはならないだろうから、この作業は保留でいいや。
 
+
+## 2017/06/01
+
+- GokuYane20170531からdepth 8で20億局面生成。400HTで20時間で2G局面。
+	201706021500D8 2.4G局面。
+		elmo lambda = 0.6 , 0.7 , 0.8 , 0.9
+
+
+- 大きい評価関数作ると自己対戦すらままならないな。最初は9GBぐらいのにしとくか。
+
+- msys2で-fltoをつけてコンパイルするとセグフォで落ちる件。
+	- iostream絡みの問題らしい。
+	- iostream書き換えるの、logとかの絡みがあって大変だし、Stockfishと乖離するのでやりたくない。
+	- clangでコンパイル出来ればそっちでもいいか…。
+
+- clangでのコンパイルの件
+	- https://github.com/mizar/YaneuraOu/releases/tag/v4.63-test20170531b
+	- コンパイル自体は通った。static linkしてないので別途dllが必要らしい。
+	- あと、msys2環境のclang、OpenMpは別途なんとかしないといけないらしい。
+
+
+## 2017/05/31
+
+- ctime()、MSVCで警告でるので書き換える。
+
+	auto now = std::time(nullptr);
+	auto* localNow = std::localtime(&now);
+	char buf[256];
+	sprintf("%d/%d/%d %d:%d:%d", buf, localNow->tm_year, localNow->tm_mon + 1, localNow->tm_mday,
+		localNow->tm_hour, localNow->tm_min, localNow->tm_sec);
+	return string(buf);
+	→　あかん。localtime()も同様か。なんだこりゃ。
+
+- clangでコンパイルが通るかを確認したほうがいいかも知れん。
+	- VSでclangを選択すればいいのか。
+	- http://releases.llvm.org/download.html
+		- Download LLVM 4.0.0
+		- Clang for Windows (64-bit) (.sig)
+		- うまくMSVCと統合されへん。禿げそう。
+		- Mizarさんのコンパイルのログから、適当になおしておく。
+
+- 警告の抑制、そこそこ削除してもよさげ。
+
+	// C4800 : 'unsigned int': ブール値を 'true' または 'false' に強制的に設定します
+	// →　static_cast<bool>(...)において出る。
+	#pragma warning(disable : 4800)
+
+	// C4102 : ラベルは 1 度も参照されません。
+	#pragma warning(disable : 4102)
+
+
+	// for GCC
+	#if defined(__GNUC__)
+	#endif
+
+	// for Clang
+	//#pragma clang diagnostic ignored "-Wunused-value"     // 未使用な変数に対する警告
+	//#pragma clang diagnostic ignored "-Wnull-dereference" // *(int*)0 = 0; のようにnullptrに対する参照に対する警告
+	//#pragma clang diagnostic ignored "-Wparentheses"      // while (m = mp.next()) {.. } みたいな副作用についての警告
+	//#pragma clang diagnostic ignored "-Wmicrosoft"        // 括弧のなかからの gotoでの警告
+
+
+
+- 学習部、3角配列を用いる。
+	- 書けた。
+	- YaneuraOuV460learn_mini.exeとして実験。
+	- 学習失敗してた。デバッグ頑張ろう…(´ω｀)
+	- vの書き込み、間違ってた。修正した。
+	- 再度、学習のテスト。Apery(WCSC26)から追加学習でテスト。depth8 5億局面、loop 1。
+		- 1) 三角配列 + AdaGrad     + elmo method
+		- 2) 三角配列 + SGD rand(3) + elmo method
+		- 3) 三角配列 + SGD no rand + elmo method
+		- 4) 三角配列 + SGD 31 rand + elmo method
+
+		1) T1,b1000,937 - 61 - 1822(33.96% R-115.52) win black : white = 48.86% : 51.14%
+		   T1,b3000,1516 - 110 - 3374(31.0% R-138.98) win black : white = 50.63% : 49.37%
+		2) T1,b3000,2047 - 152 - 2761(42.57% R-51.98) win black : white = 51.87% : 48.13%
+		3) T1,b3000,1875 - 142 - 2973(38.68% R-80.08) win black : white = 50.37% : 49.63%
+		4) T1,b3000,991 - 56 - 2133(31.72% R-133.17) win black : white = 51.12% : 48.88%
+
+	SGDのrand(3)、どう見ても値が動き足らん。
+	以下のコード、削除する。逆に、もっと足したほうが良さそう。
+
+	2)のコード
+				// しかし+1,-1だと値が動きすぎるので 1/3ぐらいの確率で動かす。
+				// これは、1/3ずつ動かしているのに相当する。
+				if (prng.rand(3))
+					continue;
+
+	4)のコード
+		↓以下のように変更してみる。
+
+				// 0～5ぐらいずつ動かす場合
+				// ガウス分布っぽいほうが良いので5bitの乱数を発生させて(それぞれのbitは1/2の確率で1である)、
+				// それをpop_count()する。このとき、二項分布になっている。
+				s16 diff = (s16)POPCNT32((u32)prng.rand(31));
+
+				→　これが結果、よさげ。デフォルトでこれにしておく。AdaGradと比べても遜色なさげ。
+
+
+- Eval::Weightなどをlearn/learning_tools.h/cppとして切り離す。
+
+- EvalLearningTools::KPPのテスト用コード
+
+#if 1
+	EvalLearningTools::init();
+	for (u64 i = KPP::min_index(); i < KPP::max_index(); ++i)
+	{
+		auto k = KPP::fromIndex(i);
+		//std::cout << i << " <- " <<  k.king() << k.piece0() << k.piece1() << std::endl;
+		KPP a[2];
+		k.toLowerDimensions(a);
+		//for (auto j : { 0,1 })
+		//	std::cout << j << " = " << a[j].king() << a[j].piece0() << a[j].piece1() << a[j].toIndex() << std::endl;
+
+		KPP b[2];
+		a[1].toLowerDimensions(b);
+		if (b[1].toIndex() != i)
+		{
+			std::cout << i;
+		}
+	}
+#endif
+
+- PPAP評価関数
+	- FP型(2GB)
+	- SP型(6GB)
+	- EP型(16GB)
+	- 実装難しい気がしてきた。考えなおす。
+
+
+
+## 2017/05/30
+
+
+- SlowMover、いるのか？早指しさせたいときに便利なのか…そうか…。
+
+
+## 2017/05/29
+
+
+- 雑巾絞り GokuYane20170527 , 201705281650D8
+	depth 8 , 18億。minibatch 1M。loop 2。
+
+	1) elmo  , AdaGrad eta = 30 , lambda = 0.9
+	2) elmo  , AdaGrad eta = 30 , lambda = 0.85
+	3) elmo  , SGD     rand(3)  , lambda = 0.8
+	4) YAEL  , AdaGrad eta = 30 , lambda = 0.8
+
+	YANE_ELMO = YAEL
+	// gamePly == 0なら  λ = 0.8ぐらい。(勝敗の影響を小さめにする)
+	// gamePly == ∞なら λ = 0.4ぐらい。(元のelmo式ぐらいの値になる)
+	const double LAMBDA = 0.8 - (0.8-0.4)*(double)std::min((int)psv.gamePly, 100)/100.0;
+
+	3)が31億局面あたりで落ちてしまった。
+
+	1) T1,b3000,2281 - 152 - 2567(47.05% R-20.52) win black : white = 50.93% : 49.07%
+	2) T1,b3000,2265 - 162 - 2573(46.82% R-22.15) win black : white = 51.82% : 48.18%
+	3) T1,b3000,2314 - 167 - 2519(47.88% R-14.75) win black : white = 50.76% : 49.24%
+		// 学習は成功しているようだが、AdaGradと比べるとちょっと伸びが小さい。途中で落ちたからか？よくわからん。
+	4) T1,b3000,2354 - 142 - 2504(48.46% R-10.73) win black : white = 52.24% : 47.76%
+
+	elmo絞りはlambda = 0.8か0.75付近がpeakかも。
+
+	elmo(WCSC27)と対戦。
+	1) T1,b6000,2519 - 80 - 2401(51.2% R8.33) win black : white = 51.63% : 48.37%
+	2) T1,b6000,2505 - 94 - 2401(51.06% R7.37) win black : white = 52.12% : 47.88%
+	3) T1,b6000,2520 - 85 - 2395(51.27% R8.84) win black : white = 51.52% : 48.48%
+	4) T1,b6000,2467 - 77 - 2456(50.11% R0.78) win black : white = 51.84% : 48.16%
+
+	λ=0.5～0.8あたり、次回もう少し調べてみる。
+
+
+- 教師局面からの学習jenkins用バッチコマンド
+	mkdir %YANEHOME%\eval\learn_%BUILD_NUMBER%
+	start /NODE %EXECUTOR_NUMBER% /B /WAIT /D %YANEHOME% %YANEHOME%\exe\%ENGINE% evaldir eval\%EVAL_DIR% , evalsavedir %YANEHOME%\eval\learn_%BUILD_NUMBER% , threads %HT_CORES%, hash 16 , evalshare false , learn loop %LOOP_MAX% basedir %YANEHOME% batchsize %BATCH_SIZE% eta %ETA% lambda %LAMBDA% targetdir learn_sfen\%KIF_DIR% , quit
+
+
+- half float実装
+
+
+## 2017/05/28
+
+- 雑巾絞り GokuYane20170527 , 201705281650D8
+	depth 8 , 18億。minibatch 1M。loop 2。
+	1) cross , AdaGrad eta = 30
+	2) elmo  , AdaGrad eta = 30 , lambda = 0.8
+	3) elmo  , AdaGrad eta = 30 , lambda = 0.7
+	4) cross , SGD
+	learn 400,401,402,403
+
+	- 損失の下がり方を見る限り、SGD 0.1 stepとかのほうがいいかも。+1,-1は大きすぎる模様。randomに1/3ぐらいの確率で動かしたほうがいいかも。
+	- 勝率、SGDのも悪くはない。さらにfloat16を導入すればいまの半分のメモリで学習できるようになるかも知れん。
+	- learnコマンドでlambdaを指定できるようにする。
+
+	前バージョンとの自己対戦
+	1) T1,b3000,2438 - 165 - 2397(50.42% R2.95) win black : white = 51.69% : 48.31%
+	2) T1,b3000,2226 - 173 - 2601(46.12% R-27.05) win black : white = 51.25% : 48.75%
+	3) T1,b3000,2287 - 148 - 2565(47.14% R-19.93) win black : white = 51.73% : 48.27%
+	4) T1,b3000,2436 - 168 - 2396(50.41% R2.88) win black : white = 51.7% : 48.3%
+
+	elmo(WCSC27)との対戦
+	2)
+		T1,b3000,2342 - 61 - 2597(47.42% R-17.95) win black : white = 51.77% : 48.23%
+		T1,b6000,1609 - 52 - 1639(49.54% R-3.21) win black : white = 52.16% : 47.84%
+	3)
+		T1,b3000,2418 - 75 - 2507(49.1% R-6.28) win black : white = 50.17% : 49.83%
+		T1,b6000,1622 - 50 - 1628(49.91% R-0.64) win black : white = 53.45% : 46.55%
+
+	2)のほうが強いとは明確に言いにくい感じではある。
+
+
+- Stockfishのevaluate()よく調べる。
+	- 軽く見た。
+
+- 勾配の符号だけ見て更新するタイプのSGDを実装。
+
+- History code rewrite
+	https://github.com/official-stockfish/Stockfish/commit/ecd3218b6b24bb54509dbe6e9b24517b7df7390d
+
+- multiPVで読み筋が途切れることがあるらしい。(Stockfish側の問題のような気も)
+	- どうしようもなさそうなのでConsiderationModeでは置換表をかき集めるようにした。
+	
+
+## 2017/05/26
+
+
+- 雑巾絞り GokuYane20170523 , 201705231540D8
+	minibatch 1M , loop 4
+	1) cross , eta = 30 
+	2) cross , eta = 60
+	3) elmo  , eta = 30 , lambda = 1/3
+	4) elmo  , eta = 30 , lambda = 0.8
+
+	1) hirate eval = 161 , rmse = 0.147802 , abs_mean_error = 0.097865 , eval_mean_error = 408.456
+	2) hirate eval = 166 , rmse = 0.148067 , abs_mean_error = 0.0979835 , eval_mean_error = 409.023
+	3) hirate eval = 124 , rmse = 0.164583 , abs_mean_error = 0.118018 , eval_mean_error = 419.256
+	4) hirate eval = 52 , rmse = 0.298737 , abs_mean_error = 0.241273 , eval_mean_error = 459.228
+
+	1) T1,b3000,1943 - 127 - 2230(46.56% R-23.93) win black : white = 50.78% : 49.22%
+	2) T1,b3000,2016 - 127 - 2157(48.31% R-11.74) win black : white = 51.67% : 48.33%
+	3) T1,b3000,1951 - 124 - 2235(46.61% R-23.61) win black : white = 51.15% : 48.85%
+	4) T1,b3000,2296 - 85 - 1989(53.58% R24.93) win black : white = 51.55% : 48.45%
+
+	対局回してたら、1)より3)のほうが勝率下がった。elmo(WCSC27)と対局させてみる。
+	そしてlambdaをいくらにするのかという戦いが始まる。
+
+	1) →ファイル消してしもた..
+	3) 
+	T1,b1000,2378 - 43 - 2579(47.97% R-14.1) win black : white = 52.07% : 47.93%
+	T1,b3000,1420 - 51 - 1369(50.91% R6.35) win black : white = 49.95% : 50.05%
+	T1,b6000,738 - 23 - 619(54.38% R30.55) win black : white = 51.22% : 48.78%
+
+	長い時間だと逆転するようだが、前回よりelmo(WCSC27)との差は縮まっている。
+
+
+- 学習のときの損失関数をオプションで指定できたほうがいいような…。
+	- まあ、そんなに書き換えないか..またあとで考えよう。
+
+- gensfenコマンドのときはEvalHash有効化するように考えなおす。
+	- 結局のところ、TTの無効化とEvalHashの無効化を制御できたほうがいいのかも。
+		- gensfenコマンド用とlearn用と対戦用とでバイナリと分けるの面倒くさいしな。
+	- GlobalOptions導入した。
+		- learn用と分ける必要がなくなった。OpenMPを有効化しないといけないからMakefileはこのままでいいや。
+
+
+## 2017/05/25
+
+- 学習部のデバッグ中。
+
+				//cout << a[0].king0() << a[0].king1() << a[0].piece() << v << weights[ids[0]].g << endl;
+				//cout << a[1].king0() << a[1].king1() << a[1].piece()
+				//	<< kkp[a[1].king0()][a[1].king1()][a[1].piece()]
+				//	<< weights[ids[1]].g << endl;
+
+// デバッグ用学習コマンド
+evaldir eval
+evalsavedir \\WS2012_860C_YAN\yanehome\eval\learn_339
+hash 4096
+evalshare false
+learn loop 10 basedir \\WS2012_860C_YAN\yanehome batchsize 10000 eta 30 targetdir learn_sfen\201705211600D6
+
+→　実はうまく学習できていた可能性が微レ存。EVAL_HASHが有効になっていたのでrmseが下がらなかっただけっぽい。
+　あとは置換表にhitしていたっぽい。
+
+Apery20160505からdepth8で5億局面生成、5億×4周。これで1秒対戦で+R63の増加になれば成功らしい。(tanuki-さん情報)
+	07:32:37 T1,b1000,582 - 15 - 403(59.09% R63.85) win black: white = 50.66% : 49.34%
+→　やってみる。
+
+	- YaneuraOuV460learn_cross.exe : LOSS_FUNCTION_IS_CROSS_ENTOROPY 
+	- YaneuraOuV460learn_win.exe   : LOSS_FUNCTION_IS_WINNING_PERCENTAGE
+
+	eval : Apery20160505
+	sfen : 201705260520D8Apery22
+	exe  : cross entoropy eta = 30 , 15 , winning percentage eta = 30 , 15 の4つ。それぞれ1),2),3),4)とする。learn386,387,388,389。
+
+	最終的なrmseとかの値とApery20160505との対局結果。雑巾絞り系はeval_mean_errorが小さいほど強いと言えそう。
+	1) hirate eval = 239 , rmse = 0.142808 , abs_mean_error = 0.096126 , eval_mean_error = 392.007
+	2) hirate eval = 237 , rmse = 0.143522 , abs_mean_error = 0.0967743 , eval_mean_error = 393.972
+	3) hirate eval = 239 , rmse = 0.0281137 , abs_mean_error = 0.0178524 , eval_mean_error = 392.129
+	4) hirate eval = 233 , rmse = 0.0284061 , abs_mean_error = 0.0180897 , eval_mean_error = 395.251
+
+	1) T1,b1000,1757 - 89 - 3154(35.78% R-101.64) win black : white = 51.27% : 48.73%
+	2) T1,b1000,1779 - 102 - 3119(36.32% R-97.54) win black : white = 50.33% : 49.67%
+	3) T1,b1000,1823 - 94 - 3083(37.16% R-91.27) win black : white = 50.18% : 49.82%
+	4) T1,b1000,1841 - 100 - 3059(37.57% R-88.21) win black : white = 50.45% : 49.55%
+
+	→ 学習成功！
+
+	LearnFloatType == doubleでもやってみる。
+
+	1) hirate eval = 228 , rmse = 0.143385 , abs_mean_error = 0.0965252 , eval_mean_error = 393.639
+	2) hirate eval = 231 , rmse = 0.145029 , abs_mean_error = 0.0978481 , eval_mean_error = 398.315
+	3) hirate eval = 228 , rmse = 0.0284011 , abs_mean_error = 0.018043 , eval_mean_error = 396.862
+	4) hirate eval = 225 , rmse = 0.02863 , abs_mean_error = 0.0182405 , eval_mean_error = 398.467
+
+	// doubleでやったほうがやや値が悪い。atomicにしていないから値を壊しているケースがあるのかも。
+	// 勝率を見るとほぼ変わらないので問題なさそう。
+
+	1) T1,b1000,1780 - 82 - 3138(36.19% R-98.49) win black : white = 51.83% : 48.17%
+	2) T1,b1000,1830 - 111 - 3059(37.43% R-89.25) win black : white = 49.4% : 50.6%
+	3) T1,b1000,1820 - 80 - 3100(36.99% R-92.52) win black : white = 49.31% : 50.69%
+	4) T1,b1000,1845 - 98 - 3057(37.64% R-87.72) win black : white = 50.63% : 49.37%
+
+
+// 評価関数ファイルを出力するときに指数移動平均(EMA)を用いた平均化を行なう。(未実装)
+// #define LEARN_USE_EMA
+
+→ 効果に乏しいらしいので実装予定ないので、削除。
+
+
+
+- よく考えたらgensfenコマンドのときはEVAL_HASHあったほうがいいのか。そうか…。
+
+
+## 2017/05/24
+
+- 学習部のmirrorとかの処理、単純化する＆高速化する。
+- 時間あったので学習部のコード、刷新した。明日にでもデバッグしよう。
+
+- evaluate_kppt_learn.cpp、いまどきのコードに書き直す。
+	- // FloatPairに対する基本的な演算。
+		- こんなもの要らんかったんやー。
+	- よく考えたらソースコードが少し汚い以外は合理的なコードのような気もしてきた。
+
+- GokuYane20170523 , 201705231540D8
+
+
+## 2017/05/23
+
+- learn_369/2 (GokuYane20170523)からdepth8で7.5億局面生成。
+
+- AdaGrad、g2をg^2としているの、もっと緩やかな収束をするように調整したほうがいいような…。
+	- http://qiita.com/ak11/items/7f63a1198c345a138150
+	- > 勾配がほぼ一定な場合で考えると、ある要素のn回目の学習率はeta / sqrt(n)くらいになる。
+
+	mini-batch 1Mだと1000回目(1G)でeta / sqrt(1000) = eta / 31.6
+	eta = 30.0だとすると これは1より小さくなるので、10G以降、値が動かないことになる。
+
+	mini-batchのサイズを大きくすることで調整すべきか。
+	50G局面食わせるならeta = 30.0としてmini-batch = 10Mにするだとか。
+
+	更新量が1.0未満なら次回に持ち越すか。
+
+				T diff = (T)(eta * (double)g[i] / sqrt((double)g2[i]));
+				// 今回の更新量が1未満であるなら整数化して0になるので
+				// 今回は更新を保留してg[i]はクリアしないことにする。
+				if (-1 < diff && diff < 1)
+					continue;
+
+				w[i] -= diff;
+
+				// この要素に関するmini-batchの1回分の更新が終わったのでgをクリア
+				g[i] = 0;
+
+
+
+## 2017/05/22
+
+- elmo vs  learn_369/2
+
+T1,b6000,1592 - 72 - 1256(55.9% R41.18) win black : white = 52.25% : 47.75%
+
+engine1 = YaneuraOuV460.exe , eval = GokuYane20170522
+engine2 = YaneuraOuV460.exe , eval = learn_369/2
+T1,b3000,2340 - 160 - 2490(48.45% R-10.79) win black : white = 51.35% : 48.65%
+T1,b6000,1362 - 124 - 1434(48.71% R-8.95) win black : white = 51.9% : 48.1%
+
+
+- SGDでmini-batch 1M、eta = 32.0
+
+- learnからLEARN_UPDATE_EVERYTIME関連、削除。コードが複雑化する。
+	学習用のfloat配列削除する。
+	eta = 30 , mini-batch 1Mにする。
+	eta = 10の場合と比較。
+		Options[EvalDir] = eval\GokuYane20170522
+		target dir      : learn_sfen\201705220250D6
+
+- これで発散するのよくわからん。書き込んでいる配列ダンプするぐらいのことをしたほうがよさげ。
+
+						if (k == SQ_59 && p1 == BonaPiece::f_pawn + SQ_27 && p2 == BonaPiece::f_rook + SQ_28)
+							cout << w << v;
+あっとる…。
+						if (k1 == SQ_59 && p == BonaPiece::f_pawn + SQ_27 && k2 == SQ_51)
+							cout << w << v;
+
+		pos.set_hirate();
+		Eval::add_grad(pos, BLACK, 10);
+		Eval::update_weights(1000000,0);
+
+		// mirrorが間違っているということは？
+		BonaPiece x = (BonaPiece)((int)Eval::f_pawn + (int)SQ_44);
+		cout << x << mir_piece[x];
+		BonaPiece y = (BonaPiece)((int)Eval::e_pawn + (int)SQ_44);
+		cout << y << mir_piece[y];
+		// あっとる。
+
+		for (int i = 0; i < fe_end;++i)
+			cout << i << " = " << (BonaPiece)(i) << " : " << mir_piece[i] << " : " << inv_piece[i] << endl;
+		// あっとる。
+
+		よくわからないな。Aperyのeta = 30が結構挑戦的な値なのかな。
+
+
+// デバッグ用学習コマンド
+evaldir eval
+evalsavedir \\WS2012_860C_YAN\yanehome\eval\learn_339
+hash 4096
+evalshare false
+learn loop 10 basedir \\WS2012_860C_YAN\yanehome batchsize 10000 eta 30 targetdir learn_sfen\201705211600D6
+
+
+- C++11でコンパイルが通るように修正。
+
+- GokuYane20170522からdepth8でelmo式で教師局面0.5G生成。
+	- depth 8、80HTで50M局面、2.5時間。400HTで10時間で1G局面。
+		5Gぐらいなら2日で生成できるのか…。
+		depth 10,12,14,16ぐらいまで試す価値あるのかも。
+
+	201705220250D6
+		AdaGrad eta 0.3と0.6で比較。
+		T1,b2000,583 - 37 - 500(53.83% R26.68) win black : white = 52.26% : 47.74%
+		0.3のほうが良さげ？
+
+
+## 2017/05/21
+
+- 80HTでAdaGrad10億局面4時間ぐらい。学習遅すぎない？
+	LEARN_RMSE_OUTPUT_INTERVAL 1で回してたからか。
+	10分で5000万。1時間で3億局面ぐらい？
+
+- 詰みの局面を渡されたときにinfo stringでmate 1と出力していたの修正。
+
+// 詰みの局面
+sfen l2+P4l/4p1R2/k1ns4p/pps6/1n1G1P3/2PS5/PPGKPs2P/3+bg4/LN3b2L b N6Prgp 1
+// 詰み2手前
+→ここ、mate -0 と出力するのが正しい？うーん。mate -と返すべきなのか。
+sfen l7l/3Pp1R2/k1ns4p/pps6/1n1G1P3/2PS5/PPGKPs2P/4g4/LNb2b2L b N6Prgp 1
+→ここはmate -2と出力する
+
+
+- elmo絞り比較中
+
+rmseは直線的に下がっているのだが…。
+
+goku(3) vs elmo
+T1,b1000,469 - 13 - 498(48.5% R-10.42) win black : white = 51.19% : 48.81%
+
+// elmoとは1秒で比較できないということがわかった。
+goku(6) vs elmo
+T1,b1000,1429 - 35 - 1456(49.53% R-3.25) win black : white = 52.48% : 47.52%
+T1,b3000,392 - 11 - 507(43.6% R-44.69) win black : white = 49.72% : 50.28%
+
+goku(8) vs elmo
+T1,b3000,482 - 20 - 578(45.47% R-31.55) win black : white = 51.89% : 48.11%
+// 近づいてはいるのか..
+
+goku(8) vs ShinYane20161108
+T1,b3000,587 - 25 - 508(53.61% R25.11) win black : white = 50.87% : 49.13%
+
+goku(10) vs elmo
+T1,b2000,360 - 11 - 419(46.21% R-26.36) win black : white = 51.35% : 48.65%
+T1,b3000,224 - 6 - 280(44.44% R-38.76) win black : white = 51.79% : 48.21%
+T1,b6000,108 - 2 - 130(45.38% R-32.21) win black : white = 51.26% : 48.74%
+// 回数少なくてよくわからないが、持ち時間を長くすると勝率が開く傾向はありそう。
+
+
+- 学習時にファイルまたぐところでrmse跳ね上がるの、何らかのバグでは…。
+	定跡局面抜けたところを書き出すからかな。うーん、そうか…。
+	いずれにせよ1PC、5000万局面の生成はよくないかも知れん。
+	random move、もっと増やすべきか。
+
+				if (ply <= 20 && rand(4) == 0)
+こう変更した。
+
+- elmo式とplyを反映させる方法との比較。
+	const double LAMBDA = 0.75 - (0.750-0.333)*(double)std::min((int)psv.gamePly, 100)/100.0;
+	const double dsig = (1 - LAMBDA ) * (eval_winrate - t) + LAMBDA * (eval_winrate - teacher_winrate);
+	// あー、これ、元の式よりdsigの値が小さくなるから、収束遅いか。公平な比較難しいな…。
+
+	elmo式 vs yane-elmo式
+	T1,b3000,406 - 33 - 421(49.09% R-6.3) win black : white = 52.24% : 47.76%
+	T1,b3000,532 - 43 - 485(52.31% R16.07) win black : white = 51.13% : 48.87%
+	// あかん。yane-elmo式はとりあえずしばらく封印。
+
+
+- elmo絞り 2億局面
+	T1,b1000,578 - 19 - 573(50.22% R1.51) win black : white = 51.0% : 49.0%
+	T1,b3000,248 - 17 - 315(44.05% R-41.54) win black : white = 49.91% : 50.09%
+	1秒では強くなっているかを計測できないようだ。
+
+	- 3.2億
+	T1,b1000,2000 - 79 - 2131(48.41% R-11.02) win black : white = 51.9% : 48.1%
+	T1,b3000,583 - 47 - 670(46.53% R-24.16) win black : white = 52.91% : 47.09%
+	// 弱くなってるような…。よくわからん。計測誤差か..
+
+
+// 誤差を計算する関数(rmseの計算用)
+// これは尺度が変わるといけないので目的関数を変更しても共通の計算にしておく。勝率の差の二乗和。
+double calc_error(Value record_value, Value value)
+{
+	double diff = winning_percentage(value) - winning_percentage(record_value);
+	return diff * diff;
+}
+
+ → これ、目的関数が違いすぎると指標にならないから学習率調整に向かないので良くない。収束したのかの判定も出来ない。
+ 目的関数のrmseを求めるように変更する。
+
+
+- gccでfilesystemが使えない件
+	- mkdir自体も失敗してるっぽい。path separatorの問題か？
+	- なんやかやして、うまく動くようになった。
+
+
+- gensfenコマンドでgamePlyを書き出すようにした。
+
+- elmoの学習ルーチン、取り込む。
+	- cf. https://github.com/mk-takizawa/elmo_for_learn/commit/3ffb877cff332684f7bcf29c5ec76ab5ac57b150
+
+	evallimit=3000 , depth 6 , 1PC(40cores) 1億局面に1.5時間。
+
+
+// 学習用コマンドbatch
+evaldir eval
+evalsavedir \\WS2012_860C_YAN\yanehome\eval\learn_339
+hash 4096
+evalshare false
+learn loop 10 basedir \\WS2012_860C_YAN\yanehome batchsize 500000 eta 30 targetdir learn_sfen\201705211600D6
+
+
+## 2017/05/20
+
+- pythonの自己対戦フレームワーク、改良する。
+
+新しいスクリプトを使う場合
+start /B /WAIT /NODE %EXECUTOR_NUMBER% c:/python27/python.exe %YANEHOME%\script\engine_invoker5.py --home %YANEHOME% --engine1 %ENGINE1% --eval1 %EVAL1% --engine2 %ENGINE2% --eval2 %EVAL2% --cores %HT_CORES% --loop %LOOP% --cpu %CPU% --engine_threads %ENGINE_THREADS% --hash1 %ENGINE_HASH1% --hash2 %ENGINE_HASH2% --time %TIMES% --book_moves %BOOK_MOVES%
+start /B /WAIT /NODE %EXECUTOR_NUMBER% move *.sfen %YANEHOME%\kif
+
+	engine_invoker5.py、パラメーターの型を間違っていたところ修正。
+	engine_invoker5.py、先手の勝率の計算が間違っていたのを修正。
+
+- score evasion
+		// ここ、moved_piece_before()とmoved_piece_after()との比較
+	4.60 vs 4.60a
+	どうもafterのほうがよさげ。
+
+Nodes searched  : 21780142
+
+
+- PositionのメンバにASSERT追加する。
+・Position::moved_piece_before()高速化
+・CheckCandidateBB、少しシュリンクした。
+
+
+## 2017/05/19
+
+- BetweenBBなんとかする。
+	- シュリンクするわ。みたいな感じで。
+	BetweenBB[BetweenIndex[sq1][sq2]]
+	785に縮んだ。縮みすぎ…。
+	速度、ほぼ変わらない。これは採用する。
+
+- min_attacker()高速化
+Nodes/second    : 846862
+
+- do_move()少しリファクタリング。
+Nodes/second    : 842517
+
+- Bitboardの馬鹿でかい配列、なんとかならんのか
+	- BetweenBB
+	- LineBB
+	[SQ_NB+1][SQ_N+1B] * 128bit = 82*82*16bytes = 107,584 bytesもある…。
+
+	- CheckCandidateBB
+	[SQ_NB+1][KING][COLOR_NB] = 82*8*2*16bytes = 20,992 bytes
+
+	この3つ、どないかならんかな..。
+	BetweenBBはStockfishで使ってあるのでとりあえず仕方がないか…。
+
+	LineBBは要らんやろ。
+	→　開き王手になる指し手生成でkingとfromを結ぶ直線上から外に出る指し手を求めるために使ってある。
+	王手の指し手、ふだん生成しないので、これ要らんのちゃうか…。ふだん生成していないということは
+	この配列、アクセスしてないのでそもそも関係ないか…。そうか…。
+
+	LineBBちょっと端に移動させた。Slide u8に変更した。
+
+	Nodes/second    : 844298
+
+	LineBBだけなら、direction求めて、sqを通る4方向の直線があればいいだけなので
+	[SQ_NB][4]で良いのだが…。そういうコードにするか？
+
+	くそー。遅くなった？0.3%ぐらい遅いかも知れん。計測誤差かも知れん。
+
+
+- BonaPieceを拡張するのに際して、この実装、良くないな。
+	PieceNo piece_no_list[fe_end2];
+	うーん。大改造になるな…。
+	→　そうでもなかった。むしろ明快になった。
+
+	Nodes/second    : 840985
+	// 速度的には遅くなったかも知れんが仕方がない。
+
+	// 置換表16MB 2.5%ぐらい速いかも。
+	Nodes/second    : 865076
+
+- PieceNoをu8に。
+
+トーナメント用
+Nodes/second    : 837767
+Nodes/second    : 847426
+// そうでないやつ
+Nodes/second    : 851751
+Nodes/second    : 853966
+
+遅くはなってなさげなので良しとする。
+他にもテーブルサイズ、もう少しシュリンク、頑張ったほうが良いのでは。
+
+- Fix memory access in Search::clear()
+	なるほど。オーバーアクセスしてたのか…。
+
+
+## 2017/05/18
+
+- config.hにトーナメント用のbuild、FOR_TOURNAMENTオプション追加。AVX2用でEVAL_HASH大きめ。EVAL_LEARN、TEST_CMD使用不可。
+
+- do_move()のときのmemcpy要らんのでは…。
+	Nodes/second    : 828360
+	Nodes/second    : 831744
+変わらんか…。
+
+- Position::piece_bb →　byTypeBBに、occupied → byColorBBにrename。
+	StockfishのPositionに合わせておく。
+
+- LONG_EFFECT_LIBRARY、何か壊してしまっている。do_move()書き換えたからか。あとでなおす。
+	- なおした。
+
+- mate1ply()、先後テンプレートで分けた。ほとんど速くならない。
+	Nodes/second    : 836288
+
+- Position::do_move()もう少し綺麗に書き直したほうがいい。
+	Nodes searched  : 20361112
+	Nodes/second    : 844859
+よくわからんが、少し速くなったのかも。
+
+		occupied[COLOR_ALL] = occupied[BLACK] | occupied[WHITE];
+
+		// xor_piece()で、occupied[COLOR_ALL]は更新しない版
+		inline void Position::xor_piece_simple(Piece pc, Square sq)
+		{
+			Color c = color_of(pc);
+			const Bitboard q = Bitboard(sq);
+			occupied[c] ^= q;
+			piece_bb[type_of(pc)] ^= q;
+		}
+
+	このリファクタリングは良くないかも…。
+
+	do_move()あまり綺麗に書き直せなかった。また今度頑張る。
+
+- mate1ply()、check infoを使えば、attackers_to()を呼び出す回数が減るのでは…。
+	- 減らんかった。
+
+- KK,KKPを16bitにして、かつBonaPieceを詰めた評価関数を用意すべき？BonaPiece詰めるとpiece_typeの導出が難しくなるのか。
+	KK,KKPは32bitのまま、値は16bitにして、残り16bitに進行度用の値を突っ込むか…。そうするといまの形式のまま、
+	追加の計算コストほぼなしに進行度の計算が出来ることになるが…。
+
+
+## 2017/05/17
+
+- lazySMPで4コアのときに8Tと4Tとどちらがいいか微妙。計測したほうがいいような。
+	- また考える。
+
+・角のテーブル小さくすることを考えたほうがいいかも。
+	- した
+
+// 1T
+Nodes/second    : 816502
+Nodes/second    : 822704
+	// 変わらないのでこれでいく。
+
+// 8T
+Total time (ms) : 31455
+Nodes searched  : 107911684
+Nodes/second    : 3430668
+Nodes searched(main thread) : 13632956
+Nodes/second  (main thread) : 433411
+
+
+・飛車のテーブルさらに小さくした。
+Nodes searched  : 20361112
+Nodes/second    : 823136
+// SSE4.1
+Nodes/second    : 689646
+
+・飛車のテーブルさらに小さくした。
+Nodes/second    : 820384
+
+・角と飛車のテーブル、大きいのでなんとかする。この変なテーブル使うのやめる。
+	角はそんなに大きくないのか。飛車をまずなんとかする。
+
+	飛車のテーブル消したが、ほぼ速度変わらない。
+	Nodes/second    : 811652
+	Nodes/second    : 816927
+
+Total time (ms) : 24635
+Nodes searched  : 84955436
+Nodes/second    : 3448566
+Nodes searched(main thread) : 10999930
+Nodes/second  (main thread) : 446516
+
+
+・lanceEffect()はrootFileEffect()を使うように変更。
+
+// 8T
+Total time (ms) : 13327
+Nodes searched  : 46596805
+Nodes/second    : 3496421
+Nodes searched(main thread) : 5807426
+Nodes/second  (main thread) : 435763
+
+Total time (ms) : 18130
+Nodes searched  : 63283390
+Nodes/second    : 3490534
+Nodes searched(main thread) : 7985854
+Nodes/second  (main thread) : 440477
+
+
+- 歩の打てるところを調べるコード、テーブルを2つに分割。先後の区別なしにする。
+
+- pawnEffect(Color,Bitboard)追加。Shift<>(Bitboard)削除。
+
+- NextSquareテーブル、 u8に変更。
+Nodes/second    : 829271
+// ほぼ変わらず
+
+
+## 2017/05/16
+
+・Moveのdropのときのfrom、SQ_NB + Pieceにしたほうが使い勝手が良いのでは…。
+	Piece自体はmoved_piece_after()で取得できるわけで…。
+// 善悪微妙なのでこの改造はいいや。
+
+- attackers_to()改良。
+
+Nodes searched  : 20361112
+Nodes/second    : 825004
+// ほぼ変わらず。
+
+・reformatting position.h
+
+・玉以外SQ_NBに移動させることはないので、ここの利きとか配列、不要。
+	→　王手になる指し手を生成するために王(SQ_NB)からの利きを見るので、そう簡単でもないのか。
+
+・ベンチマークだけTEST_CMDから移動させる。これは常に必要。
+
+
+・position::gives_check() リファクタリング。
+共通化できて、少し速くなった。(かも)
+
+
+・EVAL_LEARN、オフにしたほうが高速化する気がする。余計なコードが減って、コードが詰められるからか？
+Nodes searched  : 20361112
+Nodes/second    : 831473
+test cmdもなくしたほうが速くなるかも知れないが、benchコマンドもなくなるのでテストできなくなる。
+
+・Stockfish
+	- Execute an implied ucinewgame at startup
+		- 将棋だとusinewgameではなくisreadyに対して初期化しているのでそちらのコードを整理。
+
+・Learner::search、max_game_plyの値を変更しないようにした。
+・Limits.max_game_plyに一本化していたの、やめた。
+
+		// -- MAX_PLYに到達したかの判定が面倒なのでLimits.max_game_plyに一本化する。
+
+		// あとで戻す用
+		auto max_game_ply = Limits.max_game_ply;
+		Limits.max_game_ply = std::min(Limits.max_game_ply, rootPos.game_ply() + MAX_PLY - 1);
+
+		// これ、スレッドごとに並列探索するときによくないな。
+
+
+## 2017/05/15
+
+・新しくなってからLearner::search()がおかしいんじゃないかという件、調査する。
+	- 単体テスト用に"test search"コマンド追加。
+
+
+・読み筋の出力
+	- 1手詰めを呼んだときにpv更新するように。
+		- 3手詰め ) sfen 1+R6l/3snS1b1/p4p1+Bp/3pskp2/5l1p1/PPSNpPG2/2KPP3P/4G4/L1G5L b RGN3Pn2p 1
+		- してないけど、ちゃんと出力されてるな…。まあいいか。
+	- 検討時の読み筋出力用のオプションを追加した。
+
+
+・SILVER_HDK、GOLDS_HDK追加。
+
+Nodes searched  : 20361112
+Nodes/second    : 824904
+
+0.5%ぐらい速くなったかも。
+
+
+## 2017/05/14
+
+- 技巧2のソースコード調査する。
+	- 探索部
+		- 進行度を考慮したfutility
+		- 実現確率に基づくLMR
+
+	- futility marginに進行度を考慮。
+
+		inline Score futility_margin(Depth depth) {
+		  return static_cast<Score>(200 * (depth / kOnePly));
+		}
+		↓
+		inline Score futility_margin(Depth depth, double progress) {
+		  // 終盤になるほど、マージンを大きくする
+		  int c = static_cast<int>(120.0 + 80.0 * progress);
+		  return static_cast<Score>(c * (depth / kOnePly));
+		}
+	    
+		// 子ノードにおける futility pruning（王手がかかっている場合は、スキップされる）
+		if (   !kIsPv
+			&& !ss->skip_null_move
+			&&  depth < 7 * kOnePly
+			&&  eval - futility_margin(depth, progress) >= beta
+			&&  abs(beta) < kScoreMateInMaxPly) {
+		return eval - futility_margin(depth, progress);
+		}
+
+		// 末尾に引数ひとつ追加。
+
+	    MovePicker mp(node, history_, gains_, hash_move, rbeta - ss->static_score);
+
+
+	- 指し手の実現確率
+
+		MoveProbability::SetCacheTableToNextAge();
+
+	- aspiration
+
+		// αβウィンドウをセットする
+		Score alpha = -kScoreInfinite, beta = kScoreInfinite;
+		Score half_window = Score(64);
+
+
+	- IIDの条件変更
+
+		  // 内部反復深化（王手がかかっている場合は、スキップされる）
+		  if (   depth >= 6 * kOnePly
+			  && hash_move == kMoveNone
+			  && (kIsPv || ss->static_score + 256 >= beta)) {
+			Depth d = (depth * 3 / 4) - (2 * kOnePly);
+
+	・王手延長の条件にmove_countpruningを追加。
+
+			const bool move_count_pruning =    depth < 16 * kOnePly
+											&& move_count >= futility_move_count(kIsPv, depth);
+
+			// 王手延長
+			if (   move_gives_check
+				&& !move_count_pruning) {
+			  ext = !Swap::IsLosing(move, node) ? kOnePly : (kOnePly / 2);
+			}
+
+	・singular margin変更。
+
+			// depthに応じたマージンに
+		  Score rbeta = hash_score - int(3 * depth / kOnePly);
+		  ss->excluded_move = move;
+		  ss->skip_null_move = true;
+		  Score score = MainSearch<kNonPvNode>(node, rbeta-1, rbeta, depth / 3, ply,
+											   cut_node);
+		  ss->skip_null_move = false;
+		  ss->excluded_move = kMoveNone;
+
+		  if (score < rbeta) {
+			ext = kOnePly; // 0.5手から1手に
+		  }
+
+	・実現確率を用いたLMR
+
+		// 実現確率 及び LMR（Late Move Reduction）
+		// 一定以上の残り深さがあれば実現確率を、そうでなければLMRを用いる。
+		// 本当はすべて実現確率にしたいところだが、実現確率の計算コストが高いため、残り深さが大きい
+		// ところに限って実現確率を用いている
+		if (   depth >= 3 * kOnePly
+			&& (move_is_quiet || depth >= MoveProbability::kAppliedDepth)
+			&& move_count >= 2
+			&& move != ss->killers[0]
+			&& move != ss->killers[1]) {
+
+		  // 実現確率
+		  if (depth >= MoveProbability::kAppliedDepth) {
+			// 指し手の確率に基づいて、何手減らすかを決定する
+
+
+・Bitboardクラス、リファクタリング。
+	- enemy_field、Bitboardを別途用意した。
+	- Bitboard::test()追加。
+	- Bitboard::extract64(),insert64()追加。
+	- FOREACH_BB、修正。
+
+Total time (ms) : 24892
+Nodes searched  : 20361112
+Nodes/second    : 817978
+
+// 速くなっているかは微妙だがxmmレジスタをいったんストアしてないだけマシだと思うことにする。
+
+Total time (ms) : 25446
+Nodes searched  : 86563443
+Nodes/second    : 3401848
+Nodes searched(main thread) : 11001396
+Nodes/second  (main thread) : 432342
+
+Bitboardクラス、もう少しソースコードを整理したほうが良いと思うが、キリがないので今回はこれくらいにしておく。
+
+
+## 2017/05/13
+
+・V4.52ではConsiderBookMoveCountが無視されていた模様。これはV4.54で修正されている。
+	まふ定跡の選択がおかしかった件はこれのようだ。
+	https://github.com/yaneurao/YaneuraOu/pull/24#issuecomment-301193795
+
+・配布している実行ファイルで同じ定跡の指し手が選ばれる問題
+	  // std::random_device rd; s = (u64)rd() + ((u64)rd() << 32);
+	  // msys2のgccでbuildすると同じ値を返すっぽい。なんぞこれ…。
+	random_device使わないようにする。
+
+・定跡選択部、リファクタリング。
+
+・定跡部で指し手を選ぶ時に、いくつからいくつに減らしたかを出力するようにした。
+
+
+## 2017/05/12
+
+- 定跡の指し手の選択部、リファクタリング。
+
+- 比較実験用のKKPT型評価関数追加。
+	- nps、5%ぐらいしか変わらない。メモリレイアウトが悪いのか…。元がAVX2用のコードだし、そのせいもあるのか…。
+
+- rootMoves、上位にPIECE入ってないのでは。
+	- 入ってる。
+		Move ttMove = RootNode ? thisThread->rootMoves[thisThread->PVIdx].pv[0]
+	- ああ、 MemoryBook::find()で
+		m.bestMove = pos.move16_to_move(m.bestMove);
+		してた。そうか。これは全エディション共通か。
+
+- Stockfish最新版にキャッチアップ
+	- Default argument for see_ge()
+		- https://github.com/official-stockfish/Stockfish/commit/0c1f119069bf915b85126159d4865c4bcc532239
+	- Remove int to int conversion, unused include.
+		- https://github.com/official-stockfish/Stockfish/commit/99d914985f6ddb1ee22b232d41f17a35e1d34f89
+	- Move Pieces[] out of global visibility
+		- https://github.com/official-stockfish/Stockfish/commit/25296547d0258f8519b7614e4474bbc947eaea04
+		- 使ってないから関係なさげ。
+	- Avoid *begin always being included in the sorted list regardless of its value.
+		- https://github.com/official-stockfish/Stockfish/commit/321a27fbe3b5af9961b99585ddd365a9cc855e38
+	- use int16_t for histories
+		- https://github.com/official-stockfish/Stockfish/pull/1113
+			nps、0.5%ぐらい上がるらしい。
+
+
+## 2017/05/11
+
+
+- alignas必要のないときにつけないようにする。
+	- しなくていいらしい。
+	- ARM用のコンパイル、コンパイルオプションによっては
+		alignasがついているとbus errorになるらしいが…。
+		(たぶんコンパイラのバグ)
+
+
+## 2017/05/10
+
+
+・定跡を選択するときのConsiderBookMoveCountの処理が間違っていたので修正。
+	- 定跡選択部自体をリファクタリングしたほうがいいような気はするが…。
+
+
+・王手のかかっている局面をPosition::set_from_packed_sfen()で読むと状態が不正になる
+	- https://github.com/yaneurao/YaneuraOu/issues/27
+
+
+・Learner::qsearch() および Learner::search() でnullポインタアクセスする件修正。(thx. tanuki-さん)
+	- https://github.com/yaneurao/YaneuraOu/issues/26
+
+
+- gccでコンパイル、-fltoを指定するとセグフォで落ちる件、調査する。
+	- あと、strip試す
+
+	- USER_ENGINEにして、EVAL_NO_USEでも実行した途端にセグフォ。そんな馬鹿な…。
+	- make nosseでビルドしてもセグフォ。
+	- オプション指定するところ間違えてた…。修正した。
+	- nosseでは32bit用バイナリを生成しようと思ったが、-m32を指定するとコンパイルエラーが出て、
+	大変そうなのでこれ指定するのやめる。
+
+
+- 評価関数ファイルの自動判定機能追加。
+		{ 0x7171a5469027ebf , "ShinYane(20161010)" } ,
+		{ 0x71fc7fd40c668cc , "Ukamuse(sdt4)"      } ,
+
+		{ 0x65cd7c55a9d4cd9 , "elmo(WCSC27)"       } ,
+		{ 0x3aa68b055a020a8 , "Yomita(WCSC27)"     } ,
+		{ 0x702fb2ee5672156 , "Qhapaq(WCSC27)"     } ,
+		{ 0x6c54a1bcb654e37 , "tanuki(WCSC27)"     } ,
+
+
+// eval = elmo(WCSC27)
+Total time (ms) : 26151
+Nodes searched  : 20361112
+Nodes/second    : 778597
+
+// flto,PGOあり。
+Total time (ms) : 25944
+Nodes searched  : 20361112
+Nodes/second    : 784810
+
+// flto
+Total time (ms) : 24836
+Nodes searched  : 20361112
+Nodes/second    : 819822
+
+// PGOあまり意味なさげ
+
+// VC++2017
+Total time (ms) : 27416
+Nodes searched  : 20361112
+Nodes/second    : 742672
+Nodes/second    : 751249
+// gccのほうが5%ぐらい速いのかも知れん。
+
+// gcc + nosse
+Nodes searched  : 20361112
+Nodes/second    : 585998
 
 ## 2017/05/09
+
+- pull req取り込む。
+	- 全部なんとかした。
+
+- 読み筋出力がおかしいらしい件、調査する。
+	- V4.50で解決しているらしい。調査おわり。
 
 - 定跡データベースの採択率に比例して指し手を選択するオプション追加
 	- https://github.com/yaneurao/YaneuraOu/pull/24/files
@@ -141,9 +1208,14 @@ Nodes/second    : 778821
 		int table[SQ_NB + 7][SQ_NB][COLOR_NB];
 でいい。修正。
 
+
 - もしかして、positionクラスで、
 	Bitboard piece_bb[PIECE_TYPE_BITBOARD_NB][COLOR_NB];
 	色別に持たないほうが良いのでは…。大改造になるが高速化のために変更してみる。
+
+Nodes searched  : 20361112
+Nodes/second    : 813598
+// 結果、変わらない気がする。
 
 - piece_bb[][]を直接参照しているところをPosition::pieces()経由でアクセスするように変更。
 

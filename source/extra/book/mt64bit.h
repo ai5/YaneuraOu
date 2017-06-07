@@ -1,4 +1,4 @@
-/*
+ï»¿/*
   Apery, a USI shogi playing engine derived from Stockfish, a UCI chess playing engine.
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
@@ -25,7 +25,7 @@
 #include <cstdint>
 #include <random>
 
-// 64bit ‚Ìƒ‰ƒ“ƒ_ƒ€‚È’l‚ğ•Ô‚·ˆ×‚ÌƒNƒ‰ƒX
+// 64bit ã®ãƒ©ãƒ³ãƒ€ãƒ ãªå€¤ã‚’è¿”ã™ç‚ºã®ã‚¯ãƒ©ã‚¹
 class MT64bit : public std::mt19937_64 {
 public:
     MT64bit() : std::mt19937_64() {}

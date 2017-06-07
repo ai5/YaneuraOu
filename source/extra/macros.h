@@ -73,8 +73,8 @@ ENABLE_BIT_OPERATORS_ON(HandKind)
 // enumに対してrange forで回せるようにするためのhack(速度低下があるかも知れないので速度の要求されるところでは使わないこと)
 #define ENABLE_RANGE_OPERATORS_ON(X,ZERO,NB)     \
   inline X operator*(X x) { return x; }          \
-  inline X begin(X x) { return ZERO; }           \
-  inline X end(X x) { return NB; }
+  inline X begin(X) { return ZERO; }             \
+  inline X end(X) { return NB; }
 
 ENABLE_RANGE_OPERATORS_ON(Square, SQ_ZERO, SQ_NB)
 ENABLE_RANGE_OPERATORS_ON(Color, COLOR_ZERO, COLOR_NB)
@@ -103,18 +103,21 @@ ENABLE_RANGE_OPERATORS_ON(Piece, NO_PIECE, PIECE_NB)
 
 // Bitboardのそれぞれの升に対して処理を行なうためのマクロ。
 // p[0]側とp[1]側との両方で同じコードが生成されるので生成されるコードサイズに注意。
+// BB_自体は破壊されない。(このあとemptyであることを仮定しているなら間違い)
 
-#define FOREACH_BB(BB_, SQ_, Statement_) \
-  do {                          \
-    while (BB_.p[0]) {          \
-      SQ_ = BB_.pop_from_p0();  \
-      Statement_;               \
-    }                           \
-    while (BB_.p[1]) {          \
-      SQ_ = BB_.pop_from_p1();  \
-      Statement_;               \
-    }                           \
-  } while (false)
+#define FOREACH_BB(BB_, SQ_, Statement_)		\
+	do {										\
+		u64 p0_ = BB_.extract64<0>();			\
+		while (p0_) {							\
+			SQ_ = (Square)pop_lsb(p0_);			\
+			Statement_;							\
+		}										\
+		u64 p1_ = BB_.extract64<1>();			\
+		while (p1_) {							\
+			SQ_ = (Square)(pop_lsb(p1_) + 63);	\
+			Statement_;							\
+		}										\
+	} while (false)
 
 
 #endif
