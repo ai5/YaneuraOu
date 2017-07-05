@@ -38,18 +38,22 @@ LOCAL_CPP_FEATURES += exceptions rtti
 LOCAL_SRC_FILES := ../src/mainone.cc
 LOCAL_SRC_FILES := ../source/bitboard.cpp ../source/misc.cpp ../source/movegen.cpp ../source/position.cpp \
            ../source/shogi.cpp ../source/thread.cpp ../source/tt.cpp ../source/usi.cpp \
-           ../source/eval/evaluate_kpp.cpp ../source/eval/evaluate_material.cpp \
+           ../source/eval/evaluate.cpp ../source/eval/evaluate_io.cpp \
+           ../source/eval/evaluate_kpp.cpp \
            ../source/eval/evaluate_no_eval.cpp ../source/eval/evaluate_bona_piece.cpp \
            ../source/eval/evaluate_kppt.cpp \
            ../source/extra/bitop.cpp ../source/extra/entering_king_win.cpp \
            ../source/extra/book/book.cpp \
            ../source/extra/book/apery_book.cpp \
-           ../source/extra/long_effect.cpp ../source/extra/mate1ply_without_effect.cpp ../source/extra/mate1ply_with_effect.cpp \
-           ../source/extra/move_picker_2016Q2.cpp \
-           ../source/extra/move_picker_2016Q3.cpp \
-           ../source/extra/move_picker_2017Q2.cpp \
+           ../source/extra/long_effect.cpp \
+           ../source/extra/mate/mate1ply_without_effect.cpp ../source/extra/mate/mate1ply_with_effect.cpp \
+           ../source/extra/mate/mate_n_ply.cpp \
+           ../source/extra/move_picker/move_picker_2016Q2.cpp \
+           ../source/extra/move_picker/move_picker_2016Q3.cpp \
+           ../source/extra/move_picker/move_picker_2017Q2.cpp \
            ../source/extra/see.cpp \
-           ../source/extra/test_cmd.cpp ../source/extra/timeman.cpp \
+           ../source/extra/test_cmd.cpp ../source/extra/benchmark.cpp \
+           ../source/extra/timeman.cpp \
            ../source/engine/classic-tce-engine/classic-tce-search.cpp \
            ../source/engine/2016-mid-engine/2016-mid-search.cpp \
            ../source/engine/2016-late-engine/2016-late-search.cpp \

@@ -60,7 +60,7 @@ void bench_cmd(Position& pos, istringstream& is)
 		limits.movetime = 1000 * stoi(limit); // movetime is in ms
 
 	else if (limitType == "nodes")
-		limits.nodes = stoll(limit);
+		limits.nodes = stoi(limit);
 
 	else if (limitType == "mate")
 		limits.mate = stoi(limit);
