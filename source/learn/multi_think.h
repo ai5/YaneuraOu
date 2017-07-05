@@ -6,15 +6,14 @@
 #if defined(EVAL_LEARN) && defined(YANEURAOU_2017_EARLY_ENGINE)
 
 #include "../misc.h"
+#include "../learn/learn.h"
 
 // 棋譜からの学習や、自ら思考させて定跡を生成するときなど、
 // 複数スレッドが個別にSearch::think()を呼び出したいときに用いるヘルパクラス。
 // このクラスを派生させて用いる。
 struct MultiThink
 {
-	// 発生する乱数は再現性があるように同じものにしておく。
-	// この動作が気に要らないなら、set_prng()を用いるべし。
-	MultiThink() : prng(20160101) {}
+	MultiThink() {}
 
 	// マスタースレッドからこの関数を呼び出すと、スレッドがそれぞれ思考して、
 	// 思考終了条件を満たしたところで制御を返す。
@@ -31,7 +30,7 @@ struct MultiThink
 
 	// go_think()したときにcallback_seconds[秒]ごとにcallbackされる。
 	std::function<void()> callback_func;
-	int callback_seconds = 600;
+	u64 callback_seconds = 600;
 
 	// workerが処理する(Search::think()を呼び出す)回数を設定する。
 	void set_loop_max(u64 loop_max_) { loop_max = loop_max_; }
@@ -46,12 +45,6 @@ struct MultiThink
 			return UINT64_MAX;
 		return loop_count++;
 	}
-
-	// [ASYNC] 通常探索をして、その結果を返す。
-	std::pair<Value, std::vector<Move> >  search(Position& pos, int depth);
-
-	// [ASYNC] 静止探索をして、その結果を返す。
-	std::pair<Value, std::vector<Move> > qsearch(Position& pos);
 
 	// worker threadがI/Oにアクセスするときのmutex
 	Mutex io_mutex;
@@ -70,12 +63,6 @@ protected:
 		return prng.rand(n);
 	}
 
-	// 乱数の再初期化をしたいときに用いる。
-	void set_prng(PRNG prng_)
-	{
-		prng = prng_;
-	}
-
 private:
 	// workerが処理する(Search::think()を呼び出す)回数
 	volatile u64 loop_max;
@@ -92,8 +79,60 @@ private:
 	Mutex rand_mutex;
 
 	// スレッドの終了フラグ。
-	std::shared_ptr<volatile bool> thread_finished;
+	// vector<bool>にすると複数スレッドから書き換えようとしたときに正しく反映されないことがある…はず。
+	typedef u8 Flag;
+	std::vector<Flag> thread_finished;
 
+};
+
+// idle時間にtaskを処理する仕組み。
+// masterは好きなときにpush_task_async()でtaskを渡す。
+// slaveは暇なときにon_idle()を実行すると、taskを一つ取り出してqueueがなくなるまで実行を続ける。
+// MultiThinkのthread workerをmaster-slave方式で書きたいときに用いると便利。
+struct TaskDispatcher
+{
+	typedef std::function<void(size_t /* thread_id */)> Task;
+
+	// slaveはidle中にこの関数を呼び出す。
+	void on_idle(size_t thread_id)
+	{
+		Task task;
+		while ((task = get_task_async()) != nullptr)
+			task(thread_id);
+
+		sleep(1);
+	}
+
+	// [ASYNC] taskを一つ積む。
+	void push_task_async(Task task)
+	{
+		std::unique_lock<Mutex> lk(task_mutex);
+		tasks.push_back(task);
+	}
+
+	// task用の配列の要素をsize分だけ事前に確保する。
+	void task_reserve(size_t size)
+	{
+		tasks.reserve(size);
+	}
+
+protected:
+	// taskの集合
+	std::vector<Task> tasks;
+
+	// [ASYNC] taskを一つ取り出す。on_idle()から呼び出される。
+	Task get_task_async()
+	{
+		std::unique_lock<Mutex> lk(task_mutex);
+		if (tasks.size() == 0)
+			return nullptr;
+		Task task = *tasks.rbegin();
+		tasks.pop_back();
+		return task;
+	}
+
+	// tasksにアクセスするとき用のmutex
+	Mutex task_mutex;
 };
 
 #endif // defined(EVAL_LEARN) && defined(YANEURAOU_2017_EARLY_ENGINE)

@@ -48,7 +48,13 @@ extern void start_logger(bool b);
 // ファイルを丸読みする。ファイルが存在しなくともエラーにはならない。空行はスキップする。
 extern int read_all_lines(std::string filename, std::vector<std::string>& lines);
 
+// C++のfstreamでは一発で2GB以上のファイルの読み書きが出来ないのでそのためのwrapper
+// callback_funcは、ファイルがオープン出来た時点でそのファイルサイズを引数として
+// callbackされるので、バッファを確保して、その先頭ポインタを返す関数を渡すと、そこに読み込んでくれる。
+// これらの関数は、ファイルが見つからないときなどエラーの際には非0を返す。
 
+extern int read_file_to_memory(std::string filename, std::function<void*(u64)> callback_func);
+extern int write_memory_to_file(std::string filename, void *ptr, u64 size);
 
 // --------------------
 //  統計情報
@@ -189,10 +195,11 @@ struct PRNG
 {
 	PRNG(uint64_t seed) : s(seed) { ASSERT_LV1(seed); }
 
-	// C++11のrandom_device()によるseedの初期化
+	// 時刻などでseedを初期化する。
 	PRNG() {
+		// C++11のrandom_device()によるseedの初期化
 		// std::random_device rd; s = (u64)rd() + ((u64)rd() << 32);
-		// msys2のgccでbuildすると同じ値を返すっぽい。なんぞこれ…。
+		// →　msys2のgccでbuildすると同じ値を返すっぽい。なんぞこれ…。
 
 		// time値とか、thisとか色々加算しておく。
 		s = (u64)(time(NULL)) + ((u64)(this) << 32)

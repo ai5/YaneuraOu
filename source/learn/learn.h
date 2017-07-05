@@ -33,6 +33,9 @@
 // 勾配の符号だけ見るSGD。省メモリで済むが精度は…。
 // #define SGD_UPDATE
 
+// RMSProp風のAdaGrad
+// #define ADA_PROP_UPDATE
+
 
 // ----------------------
 //    学習時の設定
@@ -54,8 +57,9 @@
 
 // 学習時の評価関数の保存間隔。この局面数だけ学習させるごとに保存。
 // 当然ながら、保存間隔を長くしたほうが学習時間は短くなる。
-// 4.5億局面に1回。
-#define LEARN_EVAL_SAVE_INTERVAL (450000000ULL)
+// フォルダ名は 0/ , 1/ , 2/ ...のように保存ごとにインクリメントされていく。
+// デフォルトでは10億局面に1回。
+#define LEARN_EVAL_SAVE_INTERVAL (1000000000ULL)
 
 
 // ----------------------
@@ -85,11 +89,6 @@
 // 評価関数ファイルの保存
 // ----------------------
 
-// 保存するときのフォルダ番号を、この局面数ごとにインクリメントしていく。
-// 例) "0/KK_synthesized.bin" →　"1/KK_synthesized.bin"
-// 現状、10億局面ずつ。
-#define EVAL_FILE_NAME_CHANGE_INTERVAL (u64)1000000000
-
 // evalファイルの保存は(終了のときの)1度のみにする。
 //#define EVAL_SAVE_ONLY_ONCE
 
@@ -98,10 +97,9 @@
 // 学習に関するデバッグ設定
 // ----------------------
 
-// 学習時のrmseとタイムスタンプの出力をこの回数に1回に減らす。
+// 学習時のrmseの出力をこの回数に1回に減らす。
 // rmseの計算は1スレッドで行なうためそこそこ時間をとられるので出力を減らすと効果がある。
 #define LEARN_RMSE_OUTPUT_INTERVAL 1
-#define LEARN_TIMESTAMP_OUTPUT_INTERVAL 10
 
 
 // ----------------------
@@ -145,8 +143,25 @@ typedef float LearnFloatType;
 #define USE_TRIANGLE_WEIGHT_ARRAY
 
 
+// ======================
+//  教師局面生成時の設定
+// ======================
+
 // ----------------------
-//    標準の学習方法
+//  引き分けを書き出す
+// ----------------------
+
+// 引き分けに至ったとき、それを教師局面として書き出す
+// これをするほうが良いかどうかは微妙。
+// #define LEARN_GENSFEN_DRAW_RESULT
+
+
+// ======================
+//       configure
+// ======================
+
+// ----------------------
+//    標準の学習方法(普通の雑巾絞り)
 // ----------------------
 
 #if defined (LEARN_DEFAULT)
@@ -177,10 +192,13 @@ typedef float LearnFloatType;
 
 #define ADA_GRAD_UPDATE
 //#define SGD_UPDATE
+//#define ADA_PROP_UPDATE
 
 // 実験時は1回だけの保存で良い。
 // #define EVAL_SAVE_ONLY_ONCE
 
+// 局面はシャッフルしてから渡すので読み込み時のシャッフルは不要。
+#define LEARN_SFEN_NO_SHUFFLE
 #endif
 
 
@@ -208,9 +226,11 @@ namespace Learner
 		// 初期局面からの局面の手数。
 		u16 gamePly;
 
-		// この局面の手番側が、ゲームを最終的に勝っているならtrue。負けているならfalse。
-		// 引き分けに至った場合は、局面自体書き出さない。
-		bool isWin;
+		// この局面の手番側が、ゲームを最終的に勝っているなら1。負けているなら-1。
+		// 引き分けに至った場合は、0。
+		// 引き分けは、教師局面生成コマンドgensfenにおいて、
+		// LEARN_GENSFEN_DRAW_RESULTが有効なときにだけ書き出す。
+		s8 game_result;
 
 		// 教師局面を書き出したファイルを他の人とやりとりするときに
 		// この構造体サイズが不定だと困るため、paddingしてどの環境でも必ず40bytesになるようにしておく。
@@ -218,6 +238,16 @@ namespace Learner
 
 		// 32 + 2 + 2 + 2 + 1 + 1 = 40bytes
 	};
+
+	// 読み筋とそのときの評価値を返す型
+	// Learner::search() , Learner::qsearch()で用いる。
+	typedef std::pair<Value, std::vector<Move> > ValueAndPV;
+
+	// いまのところ、やねうら王2017Earlyしか、このスタブを持っていないが
+	// EVAL_LEARNをdefineするなら、このスタブが必須。
+	extern Learner::ValueAndPV  search(Position& pos, int depth);
+	extern Learner::ValueAndPV qsearch(Position& pos);
+
 }
 
 #endif

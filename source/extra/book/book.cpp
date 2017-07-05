@@ -70,7 +70,7 @@ namespace Book
 			// depth手読みの評価値とPV(最善応手列)を取得。
 			// 内部的にはLearner::search()を呼び出す。
 			// Learner::search()は、現在のOptions["MultiPV"]の値に従い、MultiPVで思考することが保証されている。
-			search(pos, search_depth);
+			Learner::search(pos, search_depth);
 
 			// MultiPVで局面を足す、的な
 
@@ -211,7 +211,7 @@ namespace Book
 			typedef pair<string, Color> SfenAndColor;
 			vector<SfenAndColor> sfens;
 			
-			if (bw_files)
+			if (! bw_files)
 			{
 				vector<string> tmp_sfens;
 				read_all_lines(sfen_file_name[0], tmp_sfens);
@@ -276,11 +276,59 @@ namespace Book
 				if (sfen.length() == 0)
 					continue;
 
-				istringstream iss(sfen);
-				token = "";
-				do {
+				// issから次のtokenを取得する
+				auto feed_next = [](istringstream& iss)
+				{
+					string token = "";
 					iss >> token;
-				} while (token == "startpos" || token == "moves");
+					return token;
+				};
+
+				// "sfen"に後続するsfen文字列をissからfeedする
+				auto feed_sfen = [&feed_next](istringstream& iss)
+				{
+					stringstream sfen;
+
+					// ループではないが条件外であるときにbreakでreturnのところに行くためのhack
+					while(true)
+					{
+						string token;
+
+						// 盤面を表すsfen文字列
+						sfen << feed_next(iss);
+
+						// 手番
+						token = feed_next(iss);
+						if (token != "w" && token != "b")
+							break;
+						sfen << " " << token;
+
+						// 手駒
+						sfen << " " << feed_next(iss);
+
+						// 初期局面からの手数
+						sfen <<  " " << feed_next(iss);
+
+						break;
+					}
+					return sfen.str();
+				};
+
+				bool hirate = true;
+				istringstream iss(sfen);
+				do {
+					token = feed_next(iss);
+					if (token == "sfen")
+					{
+						// 駒落ちなどではsfen xxx movesとなるのでこれをfeedしなければならない。
+						auto sfen = feed_sfen(iss);
+						pos.set(sfen);
+						hirate = false;
+					}
+				} while (token == "startpos" || token == "moves" || token == "sfen");
+
+				if (hirate)
+					pos.set_hirate();
 
 				vector<Move> m;				// 初手から(moves+1)手までの指し手格納用
 
@@ -291,14 +339,12 @@ namespace Book
 
 				StateInfo si[MAX_PLY];
 
-				pos.set_hirate();
-
 				// 変数sfに解析対象局面としてpush_backする。
 				// ただし、
 				// 1) color == COLOR_NB (希望する手番なし)のとき
 				// 2) この局面の手番が、希望する手番の局面のとき
 				// に限る。
-				auto append_to_sf = [&sf,pos,&color]()
+				auto append_to_sf = [&sf,&pos,&color]()
 				{
 					sf.push_back(SfenAndBool(pos.sfen(),
 						/* is_valid = */ color == COLOR_NB || color == pos.side_to_move()));

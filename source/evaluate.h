@@ -51,7 +51,7 @@ namespace Eval {
 	void prefetch_evalhash(const Key key);
 #endif
 
-#if defined(EVAL_KKPT) || defined(EVAL_KPPT) || defined(EVAL_KPPT_FAST)
+#if defined(EVAL_KKPT) || defined(EVAL_KPPT)
 	// 評価関数パラメーターのチェックサムを返す。
 	u64 calc_check_sum();
 
@@ -357,6 +357,12 @@ namespace Eval {
 		// SQ_NBの玉を移動させないので、この値を使うことはないはず。
 		PieceNo piece_no_list_board[SQ_NB_PLUS1];
 	};
+#endif
+
+#if defined(EVAL_KPPT)
+	// 評価関数のそれぞれのパラメーターに対して関数fを適用してくれるoperator。
+	// パラメーターの分析などに用いる。
+	void foreach_eval_param(std::function<void(s32,s32)>f);
 #endif
 
 #if defined (USE_EVAL_MAKE_LIST_FUNCTION)

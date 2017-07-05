@@ -4,29 +4,7 @@
 
 #include "multi_think.h"
 
-using namespace std;
-
 extern void is_ready();
-
-// いまのところ、やねうら王2017Earlyしか、このスタブを持っていない。
-namespace Learner
-{
-  extern pair<Value, vector<Move> >  search(Position& pos, int depth);
-  extern pair<Value, vector<Move> > qsearch(Position& pos);
-}
-
-// [ASYNC] 通常探索をして、その結果を返す。
-std::pair<Value, std::vector<Move> >  MultiThink::search(Position& pos, int depth)
-{
-	return Learner::search(pos, depth);
-}
-
-// [ASYNC] 静止探索をして、その結果を返す。
-std::pair<Value, std::vector<Move> > MultiThink::qsearch(Position& pos)
-{
-	return Learner::qsearch(pos);
-}
-
 
 void MultiThink::go_think()
 {
@@ -37,21 +15,26 @@ void MultiThink::go_think()
 	loop_count = 0;
 
 	// threadをOptions["Threads"]の数だけ生成して思考開始。
-	vector<std::thread> threads;
+	std::vector<std::thread> threads;
 	auto thread_num = (size_t)Options["Threads"];
 
 	// worker threadの終了フラグの確保
-	thread_finished.reset(new volatile bool[thread_num]);
-
+	thread_finished.resize(thread_num);
+	
 	// worker threadの起動
 	for (size_t i = 0; i < thread_num; ++i)
 	{
-		thread_finished.get()[i] = false;
+		thread_finished[i] = 0;
 		threads.push_back(std::thread([i, this]
 		{ 
 			// プロセッサの全スレッドを使い切る。
 			WinProcGroup::bindThisThread(i);
-			this->thread_worker(i); this->thread_finished.get()[i] = true;
+
+			// オーバーライドされている処理を実行
+			this->thread_worker(i);
+
+			// スレッドが終了したので終了フラグを立てる
+			this->thread_finished[i] = 1;
 		}));
 	}
 
@@ -62,46 +45,50 @@ void MultiThink::go_think()
 	// その間、callback_func()が呼び出せず、セーブできなくなる。
 	// そこで終了フラグを自前でチェックする必要がある。
 
-	while (true)
+	// すべてのスレッドが終了したかを判定する関数
+	auto threads_done = [&]()
 	{
-		// 5秒ごとにスレッドの終了をチェックする。
-		const int check_interval = 5;
+		// ひとつでも終了していなければfalseを返す
+		for (auto& f : thread_finished)
+			if (!f)
+				return false;
+		return true;
+	};
 
-		for (int i = 0; i < callback_seconds / check_interval; ++i)
-		{
-			this_thread::sleep_for(chrono::seconds(check_interval));
-
-			// すべてのスレッドが終了したか
-			for (size_t i = 0; i < thread_num; ++i)
-				if (!thread_finished.get()[i])
-					goto NEXT;
-
-			// すべてのthread_finished[i]に渡って、trueなのですべてのthreadが終了している。
-			goto FINISH;
-
-		NEXT:;
-		}
-
-		// callback_secondsごとにcallback_func()が呼び出される。
+	// コールバック関数が設定されているならコールバックする。
+	auto do_a_callback = [&]()
+	{
 		if (callback_func)
 			callback_func();
-	}
-FINISH:;
+	};
 
+
+	for (u64 i = 0 ; ; )
+	{
+		// 全スレッドが終了していたら、ループを抜ける。
+		if (threads_done())
+			break;
+
+		sleep(1000);
+
+		// callback_secondsごとにcallback_func()が呼び出される。
+		if (++i == callback_seconds)
+		{
+			do_a_callback();
+			i = 0;
+		}
+	}
 
 	// 最後の保存。
-	if (callback_func)
-	{
-		cout << endl << "finalize..";
-		callback_func();
-	}
+	std::cout << std::endl << "finalize..";
+	do_a_callback();
 
 	// 終了したフラグは立っているがスレッドの終了コードの実行中であるということはありうるので
 	// join()でその終了を待つ必要がある。
-	for (size_t i = 0; i < thread_num; ++i)
-		threads[i].join();
+	for (auto& th : threads)
+		th.join();
 
-	cout << "..all works..done!!" << endl;
+	std::cout << "..all works..done!!" << std::endl;
 }
 
 
