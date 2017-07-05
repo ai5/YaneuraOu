@@ -98,7 +98,7 @@ TTEntry* TranspositionTable::probe(const Key key, bool& found
 		// 1. keyが合致しているentryを見つけた。(found==trueにしてそのTT_ENTRYのアドレスを返す)
 		// 2. 空のエントリーを見つけた(そこまではkeyが合致していないので、found==falseにして新規TT_ENTRYのアドレスとして返す)
 
-		// Stockfishのコードだと、1.が成立したタイミングでもgenerationのrefleshをしているが、
+		// Stockfishのコードだと、1.が成立したタイミングでもgenerationのrefreshをしているが、
 		// save()のときにgenerationを書き出すため、このケースにおいてrefreshは必要ない。
 
 		// 1.
@@ -108,6 +108,13 @@ TTEntry* TranspositionTable::probe(const Key key, bool& found
 		// 2.
 		if (tte[i].key16 == key16)
 		{
+#if defined(USE_GLOBAL_OPTIONS)
+			// 置換表とTTEntryの世代が異なるなら、値は信用できないと仮定するフラグ。
+			if (GlobalOptions.use_strict_generational_tt)
+				if (tte[i].generation() != gen8)
+					tte[i].set_value(VALUE_NONE);
+#endif
+
 			tte[i].set_generation(gen8); // Refresh
 			return found = true, &tte[i];
 		}

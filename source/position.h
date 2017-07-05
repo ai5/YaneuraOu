@@ -158,16 +158,11 @@ struct Position
 {
 	// --- ctor
 
-	// コンストラクタではおまけとして平手の開始局面にする。
 	Position() {
 		clear();
-#if !(defined(USE_SHARED_MEMORY_IN_EVAL) && defined(_WIN32))
+
 		// Positionのコンストラクタで平手に初期化すると、compute_eval()が呼び出され、このときに
 		// 評価関数テーブルを参照するが、isready()が呼び出されていないのでこの初期化が出来ない。
-		// ゆえに、この処理は本来ならやめたほうが良い。
-		// (特にisready()が呼び出されるまでcompute_eval()が呼び出せない状況においては。)
-		set_hirate();
-#endif
 	}
 
 	// コピー。startStateもコピーして、外部のデータに依存しないように(detach)する。
@@ -182,7 +177,7 @@ struct Position
 
 	// sfen文字列で盤面を設定する
 	// ※　内部的にinit()は呼び出される。
-	void set(std::string sfen);
+	void set(std::string sfen , Thread* th);
 
 	// 局面のsfen文字列を取得する
 	// ※ USIプロトコルにおいては不要な機能ではあるが、デバッグのために局面を標準出力に出力して
@@ -190,7 +185,7 @@ struct Position
 	const std::string sfen() const;
 
 	// 平手の初期盤面を設定する。
-	void set_hirate() { set(SFEN_HIRATE); }
+	void set_hirate(Thread* th) { set(SFEN_HIRATE,th); }
 
 	// --- properties
 
@@ -203,8 +198,6 @@ struct Position
 
 	// この局面クラスを用いて探索しているスレッドを返す。 
 	Thread* this_thread() const { return thisThread; }
-	// この局面クラスを用いて探索しているスレッドを設定する。(threads.cppのなかで設定してある。)
-	void set_this_thread(Thread*th) { thisThread = th; }
 
 	// 盤面上の駒を返す
 	Piece piece_on(Square sq) const { ASSERT_LV3(sq <= SQ_NB); return board[sq]; }
@@ -217,9 +210,6 @@ struct Position
 
 	// 保持しているデータに矛盾がないかテストする。
 	bool pos_is_ok() const;
-
-	// 探索したノード数(≒do_move()が呼び出された回数)を取得する
-	uint64_t nodes_searched() const { return nodes; }
 
 	// 現局面に対して
 	// この指し手によって移動させる駒を返す。(移動前の駒)
@@ -460,7 +450,7 @@ struct Position
 	// 指し手mのsee(Static Exchange Evaluation : 静的取り合い評価)において
 	// v(しきい値)以上になるかどうかを返す。
 	// see_geのgeはgreater or equal(「以上」の意味)の略。
-	bool see_ge(Move m, Value v = VALUE_ZERO) const;
+	bool see_ge(Move m, Value threshold = VALUE_ZERO) const;
 
 #endif
 
@@ -571,7 +561,7 @@ struct Position
 #endif
 
 	// 入玉時の宣言勝ち
-#ifdef USE_ENTERING_KING_WIN
+#if defined (USE_ENTERING_KING_WIN)
   // Search::Limits.enteringKingRuleに基いて、宣言勝ちを行なう。
   // 条件を満たしているとき、MOVE_WINや、玉を移動する指し手(トライルール時)が返る。さもなくば、MOVE_NONEが返る。
   // mate1ply()から内部的に呼び出す。(そうするとついでに処理出来て良い)
@@ -591,7 +581,7 @@ struct Position
 	// ↑sfenを経由すると遅いので直接packされたsfenをセットする関数を作った。
 	// pos.set(sfen_unpack(data)); と等価。
 	// 渡された局面に問題があって、エラーのときは非0を返す。
-	int set_from_packed_sfen(const PackedSfen& sfen);
+	int set_from_packed_sfen(const PackedSfen& sfen , Thread* th);
 
 	// 盤面と手駒、手番を与えて、そのsfenを返す。
 	static std::string sfen_from_rawdata(Piece board[81], Hand hands[2], Color turn, int gamePly);
@@ -695,6 +685,7 @@ private:
 	// 駒番号を使わないとき用のダミー
 	PieceNo piece_no_of(Color c, Piece pt) const { return PIECE_NO_ZERO; }
 	PieceNo piece_no_of(Piece pc, Square sq) const { return PIECE_NO_ZERO; }
+	PieceNo piece_no_of(Square sq) const { return PIECE_NO_ZERO; }
 #endif
 	// ---
 
@@ -715,9 +706,6 @@ private:
 
 	// この局面クラスを用いて探索しているスレッド
 	Thread* thisThread;
-
-	// 探索ノード数 ≒do_move()の呼び出し回数。
-	uint64_t nodes;
 
 	// 現局面に対応するStateInfoのポインタ。
 	// do_move()で次の局面に進むときは次の局面のStateInfoへの参照をdo_move()の引数として渡される。

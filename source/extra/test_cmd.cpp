@@ -9,17 +9,13 @@
 #include "../eval/evaluate_io.h"
 #include <unordered_set>
 
+#if defined(EVAL_LEARN)
+#include "../learn/learn.h"
+#endif
+
 // 評価関数ファイルを読み込む。
 // 局面の初期化は行わないので必要ならばPosition::set()などで初期化すること。
 extern void is_ready();
-
-#if defined(EVAL_LEARN)
-namespace Learner
-{
-	extern pair<Value, vector<Move> > qsearch(Position& pos);
-	extern pair<Value, vector<Move> >  search(Position& pos, int depth);
-}
-#endif
 
 // ----------------------------------
 //  USI拡張コマンド "perft"(パフォーマンステスト)
@@ -248,7 +244,7 @@ void random_player(Position& pos,uint64_t loop_max)
   uint64_t mate_missed = 0;   // 1手詰め判定で見逃した1手詰め局面の数
 #endif
 
-  pos.set_hirate();
+  pos.set_hirate(Threads.main());
   const int MAX_PLY = 256; // 256手までテスト
 
   StateInfo state[MAX_PLY]; // StateInfoを最大手数分だけ
@@ -406,7 +402,7 @@ void random_player_bench_cmd(Position& pos, istringstream& is)
   is >> loop_max;
   cout << "Random Player bench test , loop_max = " << loop_max << endl;
 
-  pos.set_hirate();
+  pos.set_hirate(Threads.main());
   const int MAX_PLY = 256; // 256手までテスト
 
   StateInfo state[MAX_PLY]; // StateInfoを最大手数分だけ
@@ -684,7 +680,7 @@ void test_read_record(Position& pos, istringstream& is)
     auto& SetupStates = Search::SetupStates;
     SetupStates = Search::StateStackPtr(new aligned_stack<StateInfo>());
 
-    pos.set(sfen);
+    pos.set(sfen , Threads.main());
 
     while (ss >> token)
     {
@@ -735,7 +731,7 @@ void auto_play(Position& pos, istringstream& is)
 
   for (uint64_t i = 0; i < loop_max; ++i)
   {
-    pos.set_hirate();
+    pos.set_hirate(Threads.main());
     for (ply = 0; ply < MAX_PLY; ++ply)
     {
       MoveList<LEGAL_ALL> mg(pos);
@@ -743,8 +739,7 @@ void auto_play(Position& pos, istringstream& is)
         break;
 
       Time.reset();
-      Threads.init_for_slave(pos, lm);
-      Threads.start_thinking(pos, lm, Search::SetupStates);
+      Threads.start_thinking(pos, Search::SetupStates , lm);
       Threads.main()->wait_for_search_finished();
       auto rootMoves = Threads.main()->rootMoves;
       if (rootMoves.size() == 0)
@@ -963,11 +958,13 @@ void unit_test(Position& pos, istringstream& is)
   }
 #endif
 
+  Thread* th = Threads.main();
+
   // hash key
   // この値が変わると定跡DBがhitしなくなってしまうので変えてはならない。
   {
     cout << "> hash key check ";
-    pos.set_hirate();
+    pos.set_hirate(th);
     check( pos.state()->key() == UINT64_C(0x75a12070b8bd438a));
   }
 
@@ -976,13 +973,13 @@ void unit_test(Position& pos, istringstream& is)
     // 最多合法手局面
     const string POS593 = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
     cout << "> genmove sfen = " << POS593;
-    pos.set(POS593);
+    pos.set(POS593,th);
     auto mg = MoveList<LEGAL_ALL>(pos);
     cout << " , moves = " << mg.size();
     check( mg.size() == 593);
 
     cout << "> perft depth 6 ";
-    pos.set_hirate();
+    pos.set_hirate(th);
     auto result = PerftSolver().Perft<true>(pos,6);
     check(  result.nodes == 547581517 && result.captures == 3387051
 #ifdef      KEEP_LAST_MOVE
@@ -1014,7 +1011,7 @@ void exam_book(Position& pos)
 	Book::MemoryBook book;
 
 	string book_name = "yaneura_book1.db";
-	Book::read_book("book/" + book_name, book, (bool)Options["BookOnTheFly"]);
+	book.read_book("book/" + book_name, (bool)Options["BookOnTheFly"]);
 	
 	string input_sfen_name = "book/records2016.sfen";
 	string output_sfen_name = "book/records2016new.sfen";
@@ -1054,7 +1051,7 @@ void exam_book(Position& pos)
 			buf += token + " ";
 			if (token == "startpos")
 			{
-				pos.set_hirate();
+				pos.set_hirate(Threads.main());
 				continue;
 			}
 			else if (token == "moves")
@@ -1078,9 +1075,9 @@ void exam_book(Position& pos)
 
 			// この局面で定跡を調べる。
 			auto it = book.find(pos);
-			if (it != book.end() && it->second.size() != 0)
+			if (it != nullptr )
 			{
-				int v = it->second[0].value;
+				int v = it->at(0).value;
 				// 得られた評価値が基準範囲内なので定跡として書き出す。
 				if (-100 <= v && v <= 100)
 				{
@@ -1113,11 +1110,9 @@ void book_check(Position& pos, Color rootTurn, Book::MemoryBook& book, string sf
 	StateInfo si;
 
 	auto it = book.find(pos);
-	if (it != book.end() && it->second.size() != 0) {
+	if (it != nullptr) {
 		// 定跡にhitした。逆順で出力しないと将棋所だと逆順にならないという問題があるので逆順で出力する。
-		// また、it->second->size()!=0をチェックしておかないと指し手のない定跡が登録されていたときに困る。
-
-		const auto& move_list = it->second;
+		const auto& move_list = *it;
 
 		// 上位N手で局面を進める。
 		size_t n;
@@ -1178,14 +1173,14 @@ void book_check_cmd(Position& pos, istringstream& is)
 
 	string file_name = "book_records.sfen";
 	ofstream of(file_name, ios::out);
-	pos.set_hirate();
+	pos.set_hirate(Threads.main());
 
 	// とりあえずファイル名は固定でいいや。
 	string book_name = "yaneura_book3.db";
 
 	// bookの読み込み。	
 	Book::MemoryBook book;
-	Book::read_book("book/" + book_name, book, /*BookOnTheFly*/ false);
+	book.read_book("book/" + book_name, /*BookOnTheFly*/ false);
 	string sfen = "startpos moves";
 
 	if (turn == "all")
@@ -1212,8 +1207,6 @@ void book_check_cmd(Position& pos, istringstream& is)
 // depthを指定しないときはdefaultでは6。
 void test_search(Position& pos, istringstream& is)
 {
-	pos.set_this_thread(Threads.main());
-
 	int depth = 6;
 	is >> depth;
 
@@ -1305,23 +1298,17 @@ struct KKPT_reader
 
 	void read(string dir)
 	{
-		{
-			std::ifstream ifsKK(path_combine(dir, KK_BIN), std::ios::binary);
-			if (ifsKK) ifsKK.read(reinterpret_cast<char*>(kk_), sizeof(*kk_));
-			else goto Error;
+		auto make_name = [&](std::string filename) { return path_combine(dir, filename); };
+		auto input = EvalIO::EvalInfo::build_kppt32(make_name(KK_BIN), make_name(KKP_BIN), make_name(KPP_BIN));
+		auto output = EvalIO::EvalInfo::build_kppt32((void*)kk_, (void*)kkp_, (void*)kpp_);
 
-			// KKP
-			std::ifstream ifsKKP(path_combine(dir, KKP_BIN), std::ios::binary);
-			if (ifsKKP) ifsKKP.read(reinterpret_cast<char*>(kkp_), sizeof(*kkp_));
-			else goto Error;
+		// 評価関数の実験のためにfe_endをKPPT32から変更しているかも知れないので現在のfe_endの値をもとに読み込む。
+		input.fe_end = output.fe_end = Eval::fe_end;
 
-			// KPP
-			std::ifstream ifsKPP(path_combine(dir, KPP_BIN), std::ios::binary);
-			if (ifsKPP) ifsKPP.read(reinterpret_cast<char*>(kpp_), sizeof(*kpp_));
-			else goto Error;
+		if (!EvalIO::eval_convert(input, output, nullptr))
+			goto Error;
 
-			return;
-		}
+		return;
 
 	Error:;
 		cout << "ERROR! : read error." << endl;
@@ -1329,61 +1316,53 @@ struct KKPT_reader
 
 	void write(string dir)
 	{
-		{
-			std::ofstream ofsKK(path_combine(dir, KK_BIN), std::ios::binary);
-			if (ofsKK) ofsKK.write(reinterpret_cast<char*>(kk_), sizeof(*kk_));
-			else goto Error;
+		// read()のときとinputとoutputを入れ替えると書き出せる。EvalIOマジ天使。
 
-			// KKP
-			std::ofstream ofsKKP(path_combine(dir, KKP_BIN), std::ios::binary);
-			if (ofsKKP) ofsKKP.write(reinterpret_cast<char*>(kkp_), sizeof(*kkp_));
-			else goto Error;
+		auto make_name = [&](std::string filename) { return path_combine(dir, filename); };
+		auto input = EvalIO::EvalInfo::build_kppt32((void*)kk_, (void*)kkp_, (void*)kpp_);
+		auto output = EvalIO::EvalInfo::build_kppt32(make_name(KK_BIN), make_name(KKP_BIN), make_name(KPP_BIN));
+		input.fe_end = output.fe_end = Eval::fe_end;
 
-			// KPP
-			std::ofstream ofsKPP(path_combine(dir, KPP_BIN), std::ios::binary);
-			if (ofsKPP) ofsKPP.write(reinterpret_cast<char*>(kpp_), sizeof(*kpp_));
-			else goto Error;
+		if (!EvalIO::eval_convert(input, output, nullptr))
+			goto Error;
 
-			return;
-		}
+		return;
 
 	Error:;
 		cout << "ERROR! : write error." << endl;
 	}
 
-	// 按分する
-	void div(const KKPT_reader& eval2, double percent)
+	void apply_func(const KKPT_reader& eval2, function<s32(s32,s32)> f)
 	{
-		auto r1 = percent / 100.0;
-		auto r2 = 1 - r1;
-		// p1:p2で合成する。
-		
 		for (auto k1 : SQ)
 			for (auto k2 : SQ)
 			{
-				(*kk_)[k1][k2][0] = (s32)(r1 * (*kk_)[k1][k2][0] + r2 * (*eval2.kk_)[k1][k2][0]);
-				(*kk_)[k1][k2][1] = (s32)(r1 * (*kk_)[k1][k2][1] + r2 * (*eval2.kk_)[k1][k2][1]);
+				(*kk_)[k1][k2][0] = (s32)(f( (*kk_)[k1][k2][0] , (*eval2.kk_)[k1][k2][0]) );
+				(*kk_)[k1][k2][1] = (s32)(f( (*kk_)[k1][k2][1] , (*eval2.kk_)[k1][k2][1]) );
 			}
 
 		for (auto k1 : SQ)
-			for (int p1 = 0;p1<fe_end;++p1)
+			for (int p1 = 0; p1<fe_end; ++p1)
 				for (int p2 = 0; p2 < fe_end; ++p2)
 				{
-					(*kpp_)[k1][p1][p2][0] = (s16)(r1 * (*kpp_)[k1][p1][p2][0] + r2 * (*eval2.kpp_)[k1][p1][p2][0]);
-					(*kpp_)[k1][p1][p2][1] = (s16)(r1 * (*kpp_)[k1][p1][p2][1] + r2 * (*eval2.kpp_)[k1][p1][p2][1]);
+					(*kpp_)[k1][p1][p2][0] = (s16)(f( (*kpp_)[k1][p1][p2][0] , (*eval2.kpp_)[k1][p1][p2][0]) );
+					(*kpp_)[k1][p1][p2][1] = (s16)(f( (*kpp_)[k1][p1][p2][1] , (*eval2.kpp_)[k1][p1][p2][1]) );
 				}
 
 		for (auto k1 : SQ)
 			for (auto k2 : SQ)
 				for (int p1 = 0; p1 < fe_end; ++p1)
 				{
-					(*kkp_)[k1][k2][p1][0] = (s32)(r1 * (*kkp_)[k1][k2][p1][0] + r2 * (*eval2.kkp_)[k1][k2][p1][0]);
-					(*kkp_)[k1][k2][p1][1] = (s32)(r1 * (*kkp_)[k1][k2][p1][1] + r2 * (*eval2.kkp_)[k1][k2][p1][1]);
+					(*kkp_)[k1][k2][p1][0] = (s32)(f( (*kkp_)[k1][k2][p1][0] , (*eval2.kkp_)[k1][k2][p1][0]) );
+					(*kkp_)[k1][k2][p1][1] = (s32)(f( (*kkp_)[k1][k2][p1][1] , (*eval2.kkp_)[k1][k2][p1][1]) );
 				}
 	}
 
+	// KPPの手番はやめてPPの手番のみに(擬似的に)変更する。
 	void normalize_kpp()
 	{
+		cout << "normalize.." << endl;
+
 		for (int p1 = 0; p1 < fe_end; ++p1)
 			for (int p2 = 0; p2 < fe_end; ++p2)
 			{
@@ -1391,35 +1370,79 @@ struct KKPT_reader
 				for (auto sq : SQ)
 					sum += (*kpp_)[sq][p1][p2][1];
 
-				int z = sum / SQ_NB;
+				// 平均化する。
+				// kppでは、p1!=p2は保証されている(これはkkpで加算するため)
+				// また、当然ながらk!=p。よって、kppのk,p1,p2は盤上の3駒であるから、
+				// p1==kのときとp1==p2のときのkpp配列の値は0になっているので
+				// これを除外して考える必要がある。
+				int z = sum / (SQ_NB - 2);
 
+				// Kに依存せず、PPのみで値が決まるようにする。
 				for (auto sq : SQ)
 					(*kpp_)[sq][p1][p2][1] = z;
+
+				// またKK,KPは、KKPのほうに含まれ、そちらは手番があるので
+				// KPP+手番をKPP , PP+手番にする場合も、PPのPがKであるケースは考慮しなくて良い。
 			}
 	}
 };
 
 // "test evalmerge dir1 dir2 dir3 percent"
-// dir3は出力フォルダ。事前に生成しておくこと。
 void eval_merge(istringstream& is)
 {
 	string dir1, dir2,dir3;
 	double percent;
+	string opt;
+
+	// デフォルトではnew_eval , 50%
+	dir3 = "new_eval";
+	percent = 50;
 
 	// dir1のほうの評価関数を何%で按分するか。
 	// 20を指定すると、dir1:dir2 = 20:80で按分する。
-	is >> dir1 >> dir2 >> dir3 >> percent;
-	cout << "\neval merge KKPT"; // とりあえずKKPT型評価関数のmerge専用。
-	cout << "\ndir1    : " << dir1;
-	cout << "\ndir2    : " << dir2;
-	cout << "\nOutDir  : " << dir3;
-	cout << "\npercent : " << percent << endl;
+	is >> dir1 >> dir2 >> dir3 >> percent >> opt;
+
+	// 絶対値の大きなほう/小さなほうを採用する隠しコマンド
+	bool select_absmax = opt == "absmax";
+	bool select_absmin = opt == "absmin";
+	// KPPの手番をやめてPPの手番のみに変更するオプション
+	bool select_normalize = opt == "nor";
+
+	// 適用する関数
+	function<s32(s32, s32)> f;
+
+	cout << "eval merge KKPT" << endl; // とりあえずKKPT型評価関数のmerge専用。
+	cout << "dir1    : " << dir1 << endl;
+	cout << "dir2    : " << dir2 << endl;
+	cout << "OutDir  : " << dir3 << endl;
+	if (select_absmax)
+	{
+		f = [](s32 a, s32 b) { return (abs(a) > abs(b)) ? a : b; };
+		cout << "mode   : absmax mode " << endl;
+	}
+	else if (select_absmin)
+	{
+		f = [](s32 a, s32 b) { return (abs(a) < abs(b)) ? a : b; };
+		cout << "mode   : absmin mode " << endl;
+	}
+	else
+	{
+		auto r1 = percent / 100.0;
+		auto r2 = 1 - r1;
+		// r1:r2で合成する。
+		f = [r1, r2](s32 a, s32 b) { return (s32)(a*r1 + b*r2); };
+
+		cout << "mode : interpolation , percent = " << percent << endl;
+	}
+
+	MKDIR(dir3);
 
 	KKPT_reader eval1, eval2;
 	eval1.read(dir1);
 	eval2.read(dir2);
-	eval1.div(eval2, percent);
-//	eval1.normalize_kpp();
+	eval1.apply_func(eval2,f);
+	if (select_normalize)
+		eval1.normalize_kpp();
 	eval1.write(dir3);
 
 	cout << "..done" << endl;
@@ -1551,7 +1574,7 @@ void dump_sfen(Position& pos, istringstream& is)
 		if (num >= end_number)
 			break;
 
-		pos.set_from_packed_sfen(sfen.sfen);
+		pos.set_from_packed_sfen(sfen.sfen,Threads.main());
 #if 0
 		cout << pos;
 		cout << "value = " << sfen.score << " , num = " << num << endl;
@@ -1768,27 +1791,29 @@ void test_mate_engine_cmd(Position& pos, istringstream& is) {
 
 	// main threadが探索したノード数
 	int64_t nodes_main = 0;
-	Search::StateStackPtr st;
 
 	// ベンチの計測用タイマー
 	Timer time;
 	time.reset();
 
 	for (const char* sfen : TestMateEngineSfen) {
+		Search::StateStackPtr st;
+		auto states = Search::StateStackPtr(new aligned_stack<StateInfo>);
+		states->push(StateInfo());
+
 		Position pos;
-		pos.set(sfen);
-		pos.set_this_thread(Threads.main());
+		pos.set(sfen, Threads.main());
 
 		sync_cout << "\nPosition: " << sfen << sync_endl;
 
 		// 探索時にnpsが表示されるが、それはこのglobalなTimerに基づくので探索ごとにリセットを行なうようにする。
 		Time.reset();
 
-		Threads.start_thinking(pos, limits, st);
+		Threads.start_thinking(pos, st , limits);
 		Threads.main()->wait_for_search_finished(); // 探索の終了を待つ。
 
 		nodes += Threads.nodes_searched();
-		nodes_main += Threads.main()->rootPos.nodes_searched();
+		nodes_main += Threads.main()->rootPos.this_thread()->nodes.load(memory_order_relaxed);
 	}
 
 	auto elapsed = time.elapsed() + 1; // 0除算の回避のため

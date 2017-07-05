@@ -10,10 +10,6 @@
 
 using namespace std;
 
-// Positionクラスがそこにいたるまでの手順(捕獲された駒など)を保持しておかないと千日手判定が出来ないので
-// StateInfo型のstackのようなものが必要となるので、それをglobalに確保しておく。
-Search::StateStackPtr SetupStates;
-
 // ユーザーの実験用に開放している関数。
 // USI拡張コマンドで"user"と入力するとこの関数が呼び出される。
 // "user"コマンドの後続に指定されている文字列はisのほうに渡される。
@@ -32,6 +28,13 @@ extern void test_mate_engine_cmd(Position& pos, istringstream& is);
 
 // "bench"コマンドは、"test"コマンド群とは別。常に呼び出せるようにしてある。
 extern void bench_cmd(Position& pos, istringstream& is);
+
+namespace
+{
+	// Positionクラスがそこにいたるまでの手順(捕獲された駒など)を保持しておかないと千日手判定が出来ないので
+	// StateInfo型のstackのようなものが必要となるので、それをglobalに確保しておく。
+	Search::StateStackPtr States;
+}
 
 // 定跡を作るコマンド
 #ifdef ENABLE_MAKEBOOK_CMD
@@ -266,6 +269,7 @@ namespace USI
 						}
 					}
 
+#if defined (USE_ENTERING_KING_WIN)
 					// 宣言勝ちである
 					if (m == MOVE_WIN)
 					{
@@ -275,6 +279,7 @@ namespace USI
 
 						break;
 					}
+#endif
 
 					moves[ply] = m;
 					ss << " " << m;
@@ -405,7 +410,6 @@ namespace USI
 		// -1なら、指定なし。
 		o["EngineNuma"] << Option(-1, 0, 99999);
 #endif
-		o["OwnBook"] << Option(true);
 
 		// 各エンジンがOptionを追加したいだろうから、コールバックする。
 		USI::extra_option(o);
@@ -520,7 +524,12 @@ void is_ready_cmd(Position& pos)
 
 	// Positionコマンドが送られてくるまで評価値の全計算をしていないの気持ち悪いのでisreadyコマンドに対して
 	// evalの値を返せるようにこのタイミングで平手局面で初期化してしまう。
-	pos.set(SFEN_HIRATE);
+	pos.set(SFEN_HIRATE , Threads.main());
+
+	// このままgoコマンドが来た場合、Statesには1つStateInfoを積んでおかなければならないのに
+	// そうなっていないのでまずい。
+	States = Search::StateStackPtr(new aligned_stack<StateInfo>);
+	States->push(StateInfo());
 
 	sync_cout << "readyok" << sync_endl;
 }
@@ -549,17 +558,22 @@ void position_cmd(Position& pos, istringstream& is)
 			sfen += token + " ";
 	}
 
-	pos.set(sfen);
+	pos.set(sfen , Threads.main());
 
-	SetupStates = Search::StateStackPtr(new aligned_stack<StateInfo>);
+	States = Search::StateStackPtr(new aligned_stack<StateInfo>);
+	// 要素が一つもないとempty checkとか面倒なので積んでおくことになっている。
+	States->push(StateInfo());
 
 	// 指し手のリストをパースする(あるなら)
 	while (is >> token && (m = move_from_usi(pos, token)) != MOVE_NONE)
 	{
 		// 1手進めるごとにStateInfoが積まれていく。これは千日手の検出のために必要。
 		// ToDoあとで考える。
-		SetupStates->push(StateInfo());
-		pos.do_move(m, SetupStates->top());
+		States->push(StateInfo());
+		if (m == MOVE_NULL) // do_move に MOVE_NULL を与えると死ぬので
+			pos.do_null_move(States->top());
+		else
+			pos.do_move(m, States->top());
 	}
 }
 
@@ -587,6 +601,32 @@ void setoption_cmd(istringstream& is)
 			sync_cout << "Error! : No such option: " << name << sync_endl;
 	}
 }
+
+// getoptionコマンド応答(USI独自拡張)
+// オプションの値を取得する。
+void getoption_cmd(istringstream& is)
+{
+	// getoption オプション名
+	string name = "";
+	is >> name;
+
+	// すべてを出力するモード
+	bool all = name == "";
+
+	for (auto& o : Options)
+	{
+		// 大文字、小文字を無視して比較。また、nameが指定されていなければすべてのオプション設定の現在の値を表示。
+		if ((!_stricmp(name.c_str(), o.first.c_str())) || all)
+		{
+			sync_cout << "Options[" << o.first << "] == " << (string)Options[o.first] << sync_endl;
+			if (!all)
+				return;
+		}
+	}
+	if (!all)
+		sync_cout << "No such option: " << name << sync_endl;
+}
+
 
 // go()は、思考エンジンがUSIコマンドの"go"を受け取ったときに呼び出される。
 // この関数は、入力文字列から思考時間とその他のパラメーターをセットし、探索を開始する。
@@ -672,7 +712,7 @@ void go_cmd(const Position& pos, istringstream& is) {
 
 	limits.ponder_mode = ponder_mode;
 
-	Threads.start_thinking(pos, limits, Search::SetupStates);
+	Threads.start_thinking(pos, States , limits);
 }
 
 
@@ -789,6 +829,9 @@ void USI::loop(int argc, char* argv[])
 		// オプションを設定する
 		else if (token == "setoption") setoption_cmd(is);
 
+		// オプションを取得する(USI独自拡張)
+		else if (token == "getoption") getoption_cmd(is);
+
 		// 思考エンジンの準備が出来たかの確認
 		else if (token == "isready") is_ready_cmd(pos);
 
@@ -799,7 +842,7 @@ void USI::loop(int argc, char* argv[])
 		else if (token == "d") cout << pos << endl;
 
 		// 指し手生成祭りの局面をセットする。
-		else if (token == "matsuri") pos.set("l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1");
+		else if (token == "matsuri") pos.set("l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1",Threads.main());
 
 		// "position sfen"の略。
 		else if (token == "sfen") position_cmd(pos, is);
@@ -964,11 +1007,10 @@ Move move_from_usi(const Position& pos, const std::string& str)
 	if (str == "win")
 		return MOVE_WIN;
 
-	if (str == "0000" || str == "pass")
-	{
+	// パス(null move)入力への対応 {UCI: "0000", GPSfish: "pass"}
+	if (str == "0000" || str == "null" || str == "pass")
 		return MOVE_NULL;
-	}
-	
+
 	// usi文字列をmoveに変換するやつがいるがな..
 	Move move = move_from_usi(str);
 

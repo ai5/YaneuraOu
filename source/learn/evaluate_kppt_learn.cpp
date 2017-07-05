@@ -63,7 +63,7 @@ namespace Eval
 		// 学習用配列の確保
 		u64 size = KPP::max_index();
 		weights.resize(size); // 確保できるかは知らん。確保できる環境で動かしてちょうだい。
-		memset(&weights[0], 0, sizeof(Weight) * size);
+		memset(&weights[0], 0, sizeof(Weight) * weights.size());
 
 #if defined(ADA_GRAD_UPDATE) || defined (ADA_PROP_UPDATE)
 		// 学習率の設定
@@ -94,7 +94,7 @@ namespace Eval
 		array<LearnFloatType,2> g =
 		{
 			// 手番を考慮しない値
-			(rootColor == BLACK) ? LearnFloatType(delta_grad) : -LearnFloatType(delta_grad),
+			(rootColor == BLACK             ) ? LearnFloatType(delta_grad) : -LearnFloatType(delta_grad),
 
 			// 手番を考慮する値
 			(rootColor == pos.side_to_move()) ? LearnFloatType(delta_grad) : -LearnFloatType(delta_grad)
@@ -173,7 +173,7 @@ namespace Eval
 			WinProcGroup::bindThisThread(thread_index);
 #endif
 
-#pragma omp for schedule(dynamic,1000)
+#pragma omp for schedule(dynamic,20000)
 			for (s64 index_ = 0; (u64)index_ < vector_length; ++index_)
 			{
 				// OpenMPではループ変数は符号型変数でなければならないが

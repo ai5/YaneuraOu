@@ -4,6 +4,7 @@
 #include "position.h"
 #include "misc.h"
 #include "tt.h"
+#include "thread.h"
 
 using namespace std;
 using namespace Effect8;
@@ -118,8 +119,6 @@ Position& Position::operator=(const Position& pos) {
 	std::memcpy(&startState, st, sizeof(StateInfo));
 	st = &startState;
 
-	nodes = 0;
-
 	return *this;
 }
 
@@ -132,15 +131,18 @@ void Position::clear()
 
 
 // Pieceを綺麗に出力する(USI形式ではない) 先手の駒は大文字、後手の駒は小文字、成り駒は先頭に+がつく。盤面表示に使う。
-#ifndef PRETTY_JP
+#if !defined (PRETTY_JP)
 std::string pretty(Piece pc) { return std::string(USI_PIECE).substr(pc * 2, 2); }
 #else
-std::string pretty(Piece pc) { return std::string(" □ 歩 香 桂 銀 角 飛 金 玉 と 杏 圭 全 馬 龍 菌 王^歩^香^桂^銀^角^飛^金^玉^と^杏^圭^全^馬^龍^菌^王").substr(pc * 3, 3); }
+// "□"(四角)は文字フォントによっては半分の幅しかない。"口"(くち)にする。
+std::string USI_PIECE_KANJI[] = {
+	" 口"," 歩"," 香"," 桂"," 銀"," 角"," 飛"," 金"," 玉"," と"," 杏"," 圭"," 全"," 馬"," 龍"," 菌"," 王",
+		  "^歩","^香","^桂","^銀","^角","^飛","^金","^玉","^と","^杏","^圭","^全","^馬","^龍","^菌","^王" };
+std::string pretty(Piece pc) { return USI_PIECE_KANJI[pc]; }
 #endif
 
-
 // sfen文字列で盤面を設定する
-void Position::set(std::string sfen)
+void Position::set(std::string sfen , Thread* th)
 {
 	clear();
 
@@ -290,6 +292,8 @@ void Position::set(std::string sfen)
 	if (!is_ok(*this))
 		std::cout << "info string Illigal Position?" << endl;
 #endif
+
+	thisThread = th;
 }
 
 // 局面のsfen文字列を取得する。
@@ -970,9 +974,13 @@ bool Position::pseudo_legal_s(const Move m) const {
 template <Color Us>
 void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 {
+	// MOVE_NONEはもちろん、MOVE_NULL , MOVE_RESIGNなどお断り。
+	ASSERT_LV3(is_ok(m));
+
 	ASSERT_LV3(&new_st != st);
 
-	++nodes;
+	// 探索ノード数 ≒do_move()の呼び出し回数のインクリメント。
+	thisThread->nodes.fetch_add(1, std::memory_order_relaxed);
 
 	// ----------------------
 	//  StateInfoの更新

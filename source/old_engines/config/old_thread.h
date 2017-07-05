@@ -1,4 +1,4 @@
-﻿#ifndef _THREAD_H_
+#ifndef _THREAD_H_
 #define _THREAD_H_
 
 #include <atomic>
@@ -92,15 +92,30 @@ struct Thread
 	// このスレッドが探索したノード数(≒Position::do_move()を呼び出した回数)
 	std::atomic<uint64_t> nodes;
 
+#if !defined(YANEURAOU_2017_EARLY_ENGINE)
+	// 反復深化の深さ(Depth型ではないので注意)
+	int rootDepth;
+
+	// このスレッドに関して、終了した反復深化の深さ(Depth型ではないので注意)
+	int completedDepth;
+#else
 	// 反復深化の深さ
-	std::atomic<Depth> rootDepth;
+	Depth rootDepth;
 
 	// このスレッドに関して、終了した反復深化の深さ
 	Depth completedDepth;
+#endif
 
 	// ある種のMovePickerではオーダリングのために、
 	// スレッドごとにhistoryとcounter movesのtableを持たないといけない。
-#if defined ( USE_MOVE_PICKER_2017Q2 )
+#if defined( USE_MOVE_PICKER_2015 )
+	MoveStats counterMoves;
+	HistoryStats history;
+#elif defined( USE_MOVE_PICKER_2016Q2 ) || defined( USE_MOVE_PICKER_2016Q3 )
+	MoveStats counterMoves;
+	HistoryStats history;
+	FromToStats fromTo;
+#elif defined ( USE_MOVE_PICKER_2017Q2 )
 	CounterMoveStat counterMoves;
 	ButterflyHistory history;
 #endif

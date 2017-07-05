@@ -11,7 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
-#include <iomanip> 
+#include <iomanip>
 
 using namespace std;
 using std::cout;
@@ -20,6 +20,22 @@ void is_ready();
 
 namespace Book
 {
+	// Aperyの指し手の変換。
+	Move convert_move_from_apery(uint16_t apery_move) {
+		const uint16_t to = apery_move & 0x7f;
+		const uint16_t from = (apery_move >> 7) & 0x7f;
+		const bool is_promotion = (apery_move & (1 << 14)) != 0;
+		if (is_promotion) {
+			return make_move_promote(static_cast<Square>(from), static_cast<Square>(to));
+		}
+		const bool is_drop = ((apery_move >> 7) & 0x7f) >= SQ_NB;
+		if (is_drop) {
+			const uint16_t piece = from - SQ_NB + 1;
+			return make_move_drop(static_cast<Piece>(piece), static_cast<Square>(to));
+		}
+		return make_move(static_cast<Square>(from), static_cast<Square>(to));
+	};
+
 #ifdef ENABLE_MAKEBOOK_CMD
 	// ----------------------------------
 	// USI拡張コマンド "makebook"(定跡作成)
@@ -59,10 +75,9 @@ namespace Book
 		{
 			auto sfen = sfens[id];
 
-			auto& pos = Threads[thread_id]->rootPos;
-			pos.set(sfen);
 			auto th = Threads[thread_id];
-			pos.set_this_thread(th);
+			auto& pos = th->rootPos;
+			pos.set(sfen,th);
 
 			if (pos.is_mated())
 				continue;
@@ -74,7 +89,7 @@ namespace Book
 
 			// MultiPVで局面を足す、的な
 
-			vector<BookPos> move_list;
+			PosMoveListPtr move_list(new PosMoveList());
 
 			int multi_pv = std::min((int)Options["MultiPV"], (int)th->rootMoves.size());
 			for (int i = 0; i < multi_pv; ++i)
@@ -86,7 +101,7 @@ namespace Book
 
 				// MultiPVで思考しているので、手番側から見て評価値の良い順に並んでいることは保証される。
 				// (書き出しのときに並び替えなければ)
-				move_list.push_back(bp);
+				move_list->push_back(bp);
 			}
 
 			{
@@ -210,7 +225,7 @@ namespace Book
 			// 先手番のときのみ処理対象とする。
 			typedef pair<string, Color> SfenAndColor;
 			vector<SfenAndColor> sfens;
-			
+
 			if (! bw_files)
 			{
 				vector<string> tmp_sfens;
@@ -247,7 +262,7 @@ namespace Book
 			{
 				cout << "read book..";
 				// 初回はファイルがないので読み込みに失敗するが無視して続行。
-				if (read_book(book_name, book) != 0)
+				if (book.read_book(book_name) != 0)
 				{
 					cout << "..but , create new file." << endl;
 				}
@@ -322,13 +337,13 @@ namespace Book
 					{
 						// 駒落ちなどではsfen xxx movesとなるのでこれをfeedしなければならない。
 						auto sfen = feed_sfen(iss);
-						pos.set(sfen);
+						pos.set(sfen,Threads.main());
 						hirate = false;
 					}
 				} while (token == "startpos" || token == "moves" || token == "sfen");
 
 				if (hirate)
-					pos.set_hirate();
+					pos.set_hirate(Threads.main());
 
 				vector<Move> m;				// 初手から(moves+1)手までの指し手格納用
 
@@ -399,7 +414,7 @@ namespace Book
 					{
 						// この場合、m[i + 1]が必要になるので、m.size()-1までしかループできない。
 						BookPos bp(m[i], m[i + 1], VALUE_ZERO, 32, 1);
-						insert_book_pos(book, sfen, bp);
+						book.insert(sfen, bp);
 					}
 					else if (from_thinking)
 					{
@@ -438,7 +453,7 @@ namespace Book
 						sfens_.push_back(s);
 					else
 					{
-						auto& bp = it->second;
+						auto& bp = *(it->second);
 						if (bp[0].depth < depth // 今回の探索depthのほうが深い
 							|| (bp[0].depth == depth && bp.size() < multi_pv) // 探索深さは同じだが今回のMultiPVのほうが大きい
 							)
@@ -482,7 +497,7 @@ namespace Book
 					// 前回書き出し時からレコードが追加された？
 					if (multi_think.appended)
 					{
-						write_book(book_name, book);
+						book.write_book(book_name);
 						cout << 'S' << endl;
 						multi_think.appended = false;
 					}
@@ -503,7 +518,7 @@ namespace Book
 #endif
 
 			cout << "write..";
-			write_book(book_name, book);
+			book.write_book(book_name);
 			cout << "finished." << endl;
 
 		}
@@ -521,7 +536,7 @@ namespace Book
 			cout << "book merge from " << book_name[0] << " and " << book_name[1] << " to " << book_name[2] << endl;
 			for (int i = 0; i < 2; ++i)
 			{
-				if (read_book(book_name[i], book[i]) != 0)
+				if (book[i].read_book(book_name[i]) != 0)
 					return;
 			}
 
@@ -550,15 +565,15 @@ namespace Book
 					// 1) 登録されている候補手の数がゼロならこれは無効なのでもう片方を登録
 					// 2) depthが深いほう
 					// 3) depthが同じならmulti pvが大きいほう(登録されている候補手が多いほう)
-					if (it0.second.size() == 0)
+					if (it0.second->size() == 0)
 						book[2].book_body.insert(it1);
-					else if (it1.second.size() == 0)
+					else if (it1.second->size() == 0)
 						book[2].book_body.insert(it0);
-					else if (it0.second[0].depth > it1.second[0].depth)
+					else if (it0.second->at(0).depth > it1.second->at(0).depth)
 						book[2].book_body.insert(it0);
-					else if (it0.second[0].depth < it1.second[0].depth)
+					else if (it0.second->at(0).depth < it1.second->at(0).depth)
 						book[2].book_body.insert(it1);
-					else if (it0.second.size() >= it1.second.size())
+					else if (it0.second->size() >= it1.second->size())
 						book[2].book_body.insert(it0);
 					else
 						book[2].book_body.insert(it1);
@@ -584,7 +599,7 @@ namespace Book
 				<< " , different nodes =  " << diffrent_nodes1 << " + " << diffrent_nodes2 << endl;
 
 			cout << "write..";
-			write_book(book_name[2], book[2]);
+			book[2].write_book(book_name[2]);
 			cout << "..done!" << endl;
 
 		}
@@ -594,10 +609,10 @@ namespace Book
 			string book_src, book_dst;
 			is >> book_src >> book_dst;
 			cout << "book sort from " << book_src << " , write to " << book_dst << endl;
-			Book::read_book(book_src, book);
+			book.read_book(book_src);
 
 			cout << "write..";
-			write_book(book_dst, book, true);
+			book.write_book(book_dst, true);
 			cout << "..done!" << endl;
 
 		}
@@ -606,10 +621,10 @@ namespace Book
 			string book_src, book_dst;
 			is >> book_src >> book_dst;
 			cout << "convert apery book from " << book_src << " , write to " << book_dst << endl;
-			Book::read_apery_book(book_src, book);
+			book.read_apery_book(book_src);
 
 			cout << "write..";
-			write_book(book_dst, book, true);
+			book.write_book(book_dst, true);
 			cout << "..done!" << endl;
 
 		}
@@ -624,127 +639,60 @@ namespace Book
 	}
 #endif
 
-	string trim_sfen(string sfen);
+	// ----------------------------------
+	//			MemoryBook
+	// ----------------------------------
 
-	// Apery用定跡ファイルの読み込み
-	int read_apery_book(const std::string& filename, MemoryBook& book)
+	// sfen文字列から末尾のゴミを取り除いて返す。
+	// ios::binaryでopenした場合などには'\r'なども入っていると思われる。
+	string trim_sfen(string sfen)
 	{
-		// 読み込み済であるかの判定
-		if (book.book_name == filename)
-			return 0;
-
-		auto convert_move_from_apery = [](uint16_t apery_move) {
-			const uint16_t to = apery_move & 0x7f;
-			const uint16_t from = (apery_move >> 7) & 0x7f;
-			const bool is_promotion = (apery_move & (1 << 14)) != 0;
-			if (is_promotion) {
-				return make_move_promote(static_cast<Square>(from), static_cast<Square>(to));
-			}
-			const bool is_drop = ((apery_move >> 7) & 0x7f) >= SQ_NB;
-			if (is_drop) {
-				const uint16_t piece = from - SQ_NB + 1;
-				return make_move_drop(static_cast<Piece>(piece), static_cast<Square>(to));
-			}
-			return make_move(static_cast<Square>(from), static_cast<Square>(to));
-		};
-
-		AperyBook apery_book(filename.c_str());
-		cout << "size of apery book = " << apery_book.size() << endl;
-		unordered_set<string> seen;
-		uint64_t collisions = 0;
-
-		auto report = [&]() {
-			cout << "# seen positions = " << seen.size()
-				<< ", size of converted book = " << book.book_body.size()
-				<< ", # hash collisions detected = " << collisions
-				<< endl;
-		};
-
-		function<void(Position&)> search = [&](Position& pos) {
-			const string sfen = pos.sfen();
-			const string sfen_for_key = trim_sfen(sfen);
-			if (seen.count(sfen_for_key)) return;
-			seen.insert(sfen_for_key);
-
-			if (seen.size() % 100000 == 0) report();
-
-			const auto& entries = apery_book.get_entries(pos);
-			if (entries.empty()) return;
-			bool has_illegal_move = false;
-			for (const auto& entry : entries) {
-				const Move move = convert_move_from_apery(entry.fromToPro);
-				has_illegal_move |= !pos.legal(move);
-			}
-			if (has_illegal_move) {
-				++collisions;
-				return;
-			}
-
-			StateInfo st;
-			for (const auto move : MoveList<LEGAL_ALL>(pos)) {
-				pos.do_move(move, st);
-				search(pos);
-				pos.undo_move(move);
-			}
-
-			for (const auto& entry : entries) {
-				const Move move = convert_move_from_apery(entry.fromToPro);
-				BookPos bp(move, MOVE_NONE, entry.score, 1, entry.count);
-				insert_book_pos(book, sfen, bp);
-			}
-
-			auto& move_list = book.book_body[sfen];
-			std::stable_sort(move_list.begin(), move_list.end());
-			uint64_t num_sum = 0;
-			for (const auto& bp : move_list) {
-				num_sum += bp.num;
-			}
-			num_sum = std::max(num_sum, UINT64_C(1)); // ゼロ除算対策
-			for (auto& bp : move_list) {
-				bp.prob = float(bp.num) / num_sum;
-				pos.do_move(bp.bestMove, st);
-				auto it = book.find(pos);
-				if (it != book.end() && it->second.size() != 0) {
-					bp.nextMove = it->second.front().bestMove;
-				}
-				pos.undo_move(bp.bestMove);
-			}
-		};
-
-		Position pos;
-		pos.set_hirate();
-		search(pos);
-		report();
-
-		// 読み込んだファイル名を保存しておく。二度目のread_book()はskipする。
-		book.book_name = filename;
-
-		return 0;
+		string s = sfen;
+		int cur = (int)s.length() - 1;
+		while (cur >= 0)
+		{
+			char c = s[cur];
+			// 改行文字、スペース、数字(これはgame ply)ではないならループを抜ける。
+			// これらの文字が出現しなくなるまで末尾を切り詰める。
+			if (c != '\r' && c != '\n' && c != ' ' && !('0' <= c && c <= '9'))
+				break;
+			cur--;
+		}
+		s.resize((int)(cur + 1));
+		return s;
 	}
 
 	static std::unique_ptr<AperyBook> apery_book;
 	static const constexpr char* kAperyBookName = "book/book.bin";
 
 	// 定跡ファイルの読み込み(book.db)など。
-	int read_book(const std::string& filename, MemoryBook& book, bool on_the_fly)
+	int MemoryBook::read_book(const std::string& filename, bool on_the_fly_)
 	{
 		// 読み込み済であるかの判定
-		if (book.book_name == filename)
+		// 一度read_book()が呼び出されたなら、そのときに読み込んだ定跡ファイル名が
+		// book_nameに設定されているはずなので、これと一致したなら、ここでは今回の読み込み動作を終了して良い。
+		// ただしon_the_flyの状態が変更になっているのであればファイルの読み直し等の処理が必要となる。
+		// (前回はon_the_fly == trueであったのに今回はfalseであるというような場合、メモリに丸読みしなくては
+		// 　ならないので、ここで終了してしまってはまずい。また逆に、前回はon_the_fly == falseだったものが
+		// 　今回はtrueになった場合、本来ならメモリにすでに読み込まれているのだから読み直しは必要ないが、
+		//　 何らかの目的で変更したのであろうから、この場合もきちんと反映しないとまずい。)
+		if (book_name == filename && this->on_the_fly == on_the_fly_)
 			return 0;
 
 		// 別のファイルを開こうとしているので前回メモリに丸読みした定跡をクリアしておかないといけない。
-		book.clear();
+		book_body.clear();
+		this->on_the_fly = false;
 
 		// 読み込み済み、もしくは定跡を用いない(no_book)であるなら正常終了。
 		if (filename == "book/no_book")
 		{
-			book.book_name = filename;
+			book_name = filename;
 			return 0;
 		}
 
 		if (filename == kAperyBookName) {
 			// Apery定跡データベースを読み込む
-		//	apery_book = std::make_unique<AperyBook>(kAperyBookName);
+			//	apery_book = std::make_unique<AperyBook>(kAperyBookName);
 			// これ、C++14の機能。C++11用に以下のように書き直す。
 			apery_book = std::unique_ptr<AperyBook>(new AperyBook(kAperyBookName));
 		}
@@ -752,20 +700,22 @@ namespace Book
 			// やねうら王定跡データベースを読み込む
 
 			// ファイルだけオープンして読み込んだことにする。
-			if (on_the_fly)
+			if (on_the_fly_)
 			{
-				if (book.fs.is_open())
-					book.fs.close();
+				if (fs.is_open())
+					fs.close();
 
-				book.fs.open(filename, ios::in);
-				if (book.fs.fail())
+				fs.open(filename, ios::in);
+				if (fs.fail())
 				{
 					cout << "info string Error! : can't read " + filename << endl;
 					return 1;
 				}
 
-				book.on_the_fly = true;
-				book.book_name = filename;
+				// 定跡ファイルのopenにも成功したし、on the flyできそう。
+				// このときに限りこのフラグをtrueにする。
+				this->on_the_fly = true;
+				book_name = filename;
 				return 0;
 			}
 
@@ -781,7 +731,9 @@ namespace Book
 			string sfen;
 
 			auto calc_prob = [&] {
-				auto& move_list = book.book_body[sfen];
+				if (book_body.count(sfen) == 0)
+					return;
+				auto& move_list = *book_body[sfen];
 				std::stable_sort(move_list.begin(), move_list.end());
 				num_sum = std::max(num_sum, UINT64_C(1)); // ゼロ除算対策
 				for (auto& bp : move_list)
@@ -837,7 +789,7 @@ namespace Book
 					next = move_from_usi(nextMove);
 
 				BookPos bp(best, next, value, depth, num);
-				insert_book_pos(book, sfen, bp);
+				insert(sfen, bp);
 				num_sum += num;
 			}
 			// ファイルが終わるときにも最後の局面に対するcalc_probが必要。
@@ -845,13 +797,13 @@ namespace Book
 		}
 
 		// 読み込んだファイル名を保存しておく。二度目のread_book()はskipする。
-		book.book_name = filename;
+		book_name = filename;
 
 		return 0;
 	}
 
 	// 定跡ファイルの書き出し
-	int write_book(const std::string& filename, const MemoryBook& book, bool sort)
+	int MemoryBook::write_book(const std::string& filename, bool sort) const
 	{
 		fstream fs;
 		fs.open(filename, ios::out);
@@ -859,11 +811,11 @@ namespace Book
 		// バージョン識別用文字列
 		fs << "#YANEURAOU-DB2016 1.00" << endl;
 
-		vector<pair<string, vector<BookPos>> > vectored_book;
-		for (auto& it : book.book_body)
+		vector<pair<string, PosMoveListPtr> > vectored_book;
+		for (auto& it : book_body)
 		{
 			// 指し手のない空っぽのentryは書き出さないように。
-			if (it.second.size() == 0)
+			if (it.second->size() == 0)
 				continue;
 			vectored_book.push_back(it);
 		}
@@ -883,7 +835,7 @@ namespace Book
 				// std::vectorにしてあるのでit.firstを書き換えてもitは無効にならないはず。
 				for (auto& it : vectored_book)
 				{
-					pos.set(it.first);
+					pos.set(it.first,Threads.main());
 					it.first = pos.sfen();
 				}
 			}
@@ -892,7 +844,7 @@ namespace Book
 			// ここvectored_bookが、sfen文字列でsortされていて欲しいのでsortする。
 			// アルファベットの範囲ではlocaleの影響は受けない…はず…。
 			std::sort(vectored_book.begin(), vectored_book.end(),
-				[](const pair<string, vector<BookPos>>&lhs, const pair<string, vector<BookPos>>&rhs) {
+				[](const pair<string, PosMoveListPtr>&lhs, const pair<string, PosMoveListPtr>&rhs) {
 				return lhs.first < rhs.first;
 			});
 		}
@@ -901,7 +853,7 @@ namespace Book
 		{
 			fs << "sfen " << it.first /* is sfen string */ << endl; // sfen
 
-			auto& move_list = it.second;
+			auto& move_list = *it.second;
 
 			// 採択回数でソートしておく。
 			std::stable_sort(move_list.begin(), move_list.end());
@@ -916,19 +868,19 @@ namespace Book
 		return 0;
 	}
 
-	void insert_book_pos(MemoryBook& book, const std::string sfen, const BookPos& bp)
+	void MemoryBook::insert(const std::string sfen, const BookPos& bp)
 	{
-		auto it = book.book_body.find(sfen);
-		if (it == book.end())
+		auto it = book_body.find(sfen);
+		if (it == book_body.end())
 		{
 			// 存在しないので要素を作って追加。
-			vector<BookPos> move_list;
-			move_list.push_back(bp);
-			book.book_body[sfen] = move_list;
+			PosMoveListPtr move_list(new PosMoveList);
+			move_list->push_back(bp);
+			book_body[sfen] = move_list;
 		}
 		else {
 			// この局面での指し手のリスト
-			auto& move_list = it->second;
+			auto& move_list = *it->second;
 			// すでに格納されているかも知れないので同じ指し手がないかをチェックして、なければ追加
 			for (auto& b : move_list)
 				if (b == bp)
@@ -944,52 +896,19 @@ namespace Book
 
 		FOUND_THE_SAME_MOVE:;
 		}
-
 	}
 
-	// sfen文字列から末尾のゴミを取り除いて返す。
-	// ios::binaryでopenした場合などには'\r'なども入っていると思われる。
-	string trim_sfen(string sfen)
-	{
-		string s = sfen;
-		int cur = (int)s.length() - 1;
-		while (cur >= 0)
-		{
-			char c = s[cur];
-			// 改行文字、スペース、数字(これはgame ply)ではないならループを抜ける。
-			// これらの文字が出現しなくなるまで末尾を切り詰める。
-			if (c != '\r' && c != '\n' && c != ' ' && !('0' <= c && c <= '9'))
-				break;
-			cur--;
-		}
-		s.resize((int)(cur + 1));
-		return s;
-	}
-
-	Move convert_move_from_apery(uint16_t apery_move) {
-		const uint16_t to = apery_move & 0x7f;
-		const uint16_t from = (apery_move >> 7) & 0x7f;
-		const bool is_promotion = (apery_move & (1 << 14)) != 0;
-		if (is_promotion) {
-			return make_move_promote(static_cast<Square>(from), static_cast<Square>(to));
-		}
-		const bool is_drop = ((apery_move >> 7) & 0x7f) >= SQ_NB;
-		if (is_drop) {
-			const uint16_t piece = from - SQ_NB + 1;
-			return make_move_drop(static_cast<Piece>(piece), static_cast<Square>(to));
-		}
-		return make_move(static_cast<Square>(from), static_cast<Square>(to));
-	};
-
-	MemoryBook::BookType::iterator MemoryBook::find(const Position& pos)
+	PosMoveListPtr MemoryBook::find(const Position& pos)
 	{
 		// "no_book"は定跡なしという意味なので定跡の指し手が見つからなかったことにする。
 		if (book_name == "no_book")
-			return end();
+			return PosMoveListPtr();
 
 		if (book_name == kAperyBookName) {
+
+			PosMoveListPtr pml_entry(new PosMoveList());
+
 			// Apery定跡データベースを用いて指し手を選択する
-			book_body.clear();
 			const auto& entries = apery_book->get_entries(pos);
 			int64_t sum_count = 0;
 			for (const auto& entry : entries) {
@@ -999,26 +918,25 @@ namespace Book
 			for (const auto& entry : apery_book->get_entries(pos)) {
 				BookPos book_pos(pos.move16_to_move(convert_move_from_apery(entry.fromToPro)), MOVE_NONE, entry.score, 256, entry.count);
 				book_pos.prob = entry.count / static_cast<float>(sum_count);
-				insert_book_pos(*this, pos.sfen(), book_pos);
+				insert_book_pos(pml_entry , book_pos);
 			}
 
-			return book_body.begin();
+			return 	pml_entry;
 		}
 		else {
 			// やねうら王定跡データベースを用いて指し手を選択する
 
 			// 定跡がないならこのまま返る。(sfen()を呼び出すコストの節約)
 			if (!on_the_fly && book_body.size() == 0)
-				return book_body.end();
+				return PosMoveListPtr();
 
 			auto sfen = pos.sfen();
 			BookType::iterator it;
 
 			if (on_the_fly)
 			{
-				// ディスクから読み込むなら、いずれにせよ、book_bodyをクリアして、
-				// ディスクから読み込んだエントリーをinsertしてそのiteratorを返すべき。
-				book_body.clear();
+				// ディスクから読み込むなら、いずれにせよ、新規エントリーを作成してそれを返す必要がある。
+				PosMoveListPtr pml_entry(new PosMoveList());
 
 				// 末尾の手数は取り除いておく。
 				// read_book()で取り除くと、そのあと書き出すときに手数が消失するのでまずい。(気がする)
@@ -1100,7 +1018,7 @@ namespace Book
 							break;
 
 						// 見つからなかった
-						return book_body.end();
+						return PosMoveListPtr();
 					}
 
 				}
@@ -1111,7 +1029,7 @@ namespace Book
 				uint64_t num_sum = 0;
 
 				auto calc_prob = [&] {
-					auto& move_list = book_body[sfen];
+					auto& move_list = *pml_entry;
 					std::stable_sort(move_list.begin(), move_list.end());
 					num_sum = std::max(num_sum, UINT64_C(1)); // ゼロ除算対策
 					for (auto& bp : move_list)
@@ -1161,36 +1079,120 @@ namespace Book
 					else
 						next = move_from_usi(nextMove);
 
-					BookPos bp(best, next, value, depth, num);
-					insert_book_pos(*this, sfen, bp);
+					// 定跡のMoveは16bitであり、rootMovesは32bitのMoveであるからこのタイミングで補正する。
+					BookPos bp(pos.move16_to_move(best), next, value, depth, num);
+					insert_book_pos(pml_entry , bp);
 					num_sum += num;
 				}
 				// ファイルが終わるときにも最後の局面に対するcalc_probが必要。
 				calc_prob();
 
-				it = book_body.begin();
-
+				return pml_entry;
 			}
 			else {
 
 				// on the flyではない場合
 				it = book_body.find(sfen);
-			}
+				if (it != book_body.end())
+				{
+					// 定跡のMoveは16bitであり、rootMovesは32bitのMoveであるからこのタイミングで補正する。
+					for (auto& m : *it->second)
+						m.bestMove = pos.move16_to_move(m.bestMove);
 
+					// メモリ上に丸読みしてあるので参照透明だと思って良い。
+					return PosMoveListPtr(it->second);
+				}
 
-			if (it != book_body.end())
-			{
-				// 定跡のMoveは16bitであり、rootMovesは32bitのMoveであるからこのタイミングで補正する。
-				for (auto& m : it->second)
-					m.bestMove = pos.move16_to_move(m.bestMove);
+				// 空のentryを返す。
+				return PosMoveListPtr();
 			}
-			return it;
 		}
 	}
 
-	//
-	// BookMoveSelector
-	//
+	// Apery用定跡ファイルの読み込み
+	int MemoryBook::read_apery_book(const std::string& filename)
+	{
+		// 読み込み済であるかの判定
+		if (book_name == filename)
+			return 0;
+
+		AperyBook apery_book(filename.c_str());
+		cout << "size of apery book = " << apery_book.size() << endl;
+		unordered_set<string> seen;
+		uint64_t collisions = 0;
+
+		auto report = [&]() {
+			cout << "# seen positions = " << seen.size()
+				<< ", size of converted book = " << book_body.size()
+				<< ", # hash collisions detected = " << collisions
+				<< endl;
+		};
+
+		function<void(Position&)> search = [&](Position& pos) {
+			const string sfen = pos.sfen();
+			const string sfen_for_key = trim_sfen(sfen);
+			if (seen.count(sfen_for_key)) return;
+			seen.insert(sfen_for_key);
+
+			if (seen.size() % 100000 == 0) report();
+
+			const auto& entries = apery_book.get_entries(pos);
+			if (entries.empty()) return;
+			bool has_illegal_move = false;
+			for (const auto& entry : entries) {
+				const Move move = convert_move_from_apery(entry.fromToPro);
+				has_illegal_move |= !pos.legal(move);
+			}
+			if (has_illegal_move) {
+				++collisions;
+				return;
+			}
+
+			StateInfo st;
+			for (const auto move : MoveList<LEGAL_ALL>(pos)) {
+				pos.do_move(move, st);
+				search(pos);
+				pos.undo_move(move);
+			}
+
+			for (const auto& entry : entries) {
+				const Move move = convert_move_from_apery(entry.fromToPro);
+				BookPos bp(move, MOVE_NONE, entry.score, 1, entry.count);
+				insert(sfen, bp);
+			}
+
+			auto& move_list = *book_body[sfen];
+			std::stable_sort(move_list.begin(), move_list.end());
+			uint64_t num_sum = 0;
+			for (const auto& bp : move_list) {
+				num_sum += bp.num;
+			}
+			num_sum = std::max(num_sum, UINT64_C(1)); // ゼロ除算対策
+			for (auto& bp : move_list) {
+				bp.prob = float(bp.num) / num_sum;
+				pos.do_move(bp.bestMove, st);
+				auto it = find(pos);
+				if (it != nullptr) {
+					bp.nextMove = it->front().bestMove;
+				}
+				pos.undo_move(bp.bestMove);
+			}
+		};
+
+		Position pos;
+		pos.set_hirate(Threads.main());
+		search(pos);
+		report();
+
+		// 読み込んだファイル名を保存しておく。二度目のread_book()はskipする。
+		book_name = filename;
+
+		return 0;
+	}
+
+	// ----------------------------------
+	//			BookMoveSelector
+	// ----------------------------------
 
 	using namespace USI;
 
@@ -1241,19 +1243,16 @@ namespace Book
 
 	}
 
-	// 定跡の指し手の選択
-	bool BookMoveSelector::probe(Thread& th, Search::LimitsType& Limits, PRNG& prng)
+	// probe()の下請け
+	bool BookMoveSelector::probe_impl(Position& rootPos, bool silent , Move& bestMove , Move& ponderMove)
 	{
-		auto& rootPos = th.rootPos;
-		auto& rootMoves = th.rootMoves;
-
 		// 定跡を用いる手数
 		int book_ply = Options["BookMoves"];
 		if (rootPos.game_ply() > book_ply)
 			return false;
 
 		auto it = memory_book.find(rootPos);
-		if (it == memory_book.end() || it->second.size() == 0)
+		if (it == nullptr)
 			return false;
 
 		// 定跡にhitした。逆順で出力しないと将棋所だと逆順にならないという問題があるので逆順で出力する。
@@ -1266,11 +1265,12 @@ namespace Book
 		// 1),2)から、move_list[0]の指し手がベストの指し手と言える。
 
 		// ただ、この並び替えを仮定するのはよろしくないので仮定しない。
-		// コピーして、不要なものを削除していく。
+		// やや、オーバーヘッドはあるがコピーして、不要なものを削除していく。
+		// 定跡にhitしたときに発生するオーバーヘッドなので通常は無視できるはず。
 
-		auto move_list = it->second;
+		auto move_list = *it;
 
-		if (!Limits.silent)
+		if (!silent)
 		{
 			// 将棋所では対応していないが、ShogiGUIの検討モードで使うときに
 			// 定跡の指し手に対してmultipvを出力しておかないとうまく表示されないので
@@ -1302,7 +1302,7 @@ namespace Book
 			move_list.erase(it_end, move_list.end());
 
 			// 1手でも取り除いたなら、定跡から取り除いたことをGUIに出力
-			if (!Limits.silent && (n!=move_list.size()))
+			if (!silent && (n != move_list.size()))
 				sync_cout << "info string NarrowBook : " << n << " moves to " << move_list.size() << " moves." << sync_endl;
 		}
 
@@ -1315,7 +1315,8 @@ namespace Book
 		auto depth_limit = (int)Options["BookDepthLimit"];
 		if (depth_limit != 0 && move_list[0].depth < depth_limit)
 		{
-			sync_cout << "info string BookDepthLimit is lower than the depth of this node." << sync_endl;
+			if (!silent)
+				sync_cout << "info string BookDepthLimit is lower than the depth of this node." << sync_endl;
 			move_list.clear();
 		}
 		else {
@@ -1328,15 +1329,15 @@ namespace Book
 			auto value_limit = max(value_limit1, value_limit2);
 
 			auto n = move_list.size();
-		
+
 			// 評価値がvalue_limitを下回るものを削除
 			auto it_end = std::remove_if(move_list.begin(), move_list.end(), [&](Book::BookPos& m) { return m.value < value_limit; });
 			move_list.erase(it_end, move_list.end());
 
 			// 候補手が1手でも減ったなら減った理由を出力
-			if (n!=move_list.size())
-				sync_cout << "info string BookEvalDiff = " << eval_diff << " ,  " << stm_string << " = " << value_limit2 
-					<< " , " << n << " moves to " << move_list.size() << " moves." << sync_endl;
+			if (!silent && n != move_list.size())
+				sync_cout << "info string BookEvalDiff = " << eval_diff << " ,  " << stm_string << " = " << value_limit2
+				<< " , " << n << " moves to " << move_list.size() << " moves." << sync_endl;
 		}
 
 		if (move_list.size() == 0)
@@ -1354,7 +1355,7 @@ namespace Book
 				// http://yaneuraou.yaneu.com/2015/01/03/stockfish-dd-book-%E5%AE%9A%E8%B7%A1%E9%83%A8/
 
 				u64 sum_move_counts = 0;
-				for(auto &move : move_list)
+				for (auto &move : move_list)
 				{
 					u64 move_count = std::max<u64>(1, move.num);
 					sum_move_counts += move_count;
@@ -1362,9 +1363,47 @@ namespace Book
 						bestPos = move;
 				}
 			}
-			auto bestMove = bestPos.bestMove;
+
+			bestMove = bestPos.bestMove;
+			ponderMove = bestPos.nextMove;
+			return true;
+		}
+
+		// 合法手のなかに含まれていなかった、もしくは定跡として選ばれる条件を満たさなかったので
+		// 定跡の指し手は指さない。
+		return false;
+	}
+
+	Move BookMoveSelector::probe(Position& pos)
+	{
+		const bool silent = true;
+		Move bestMove, ponderMove;
+		if (!probe_impl(pos, silent, bestMove, ponderMove))
+			return MOVE_NONE;
+
+		// bestMoveが合法かチェックしておく。
+		if (!pos.pseudo_legal(bestMove) || !pos.legal(bestMove))
+		{
+			// gensfenすると定跡のチェックになって面白いかも知れない…。
+			cout << "Error : illigal move in book" << endl
+				<< pos.sfen() << endl
+				<< "Move = " << bestMove << endl;
+			return MOVE_NONE;
+		}
+
+		return bestMove;
+	}
+
+	// 定跡の指し手の選択
+	bool BookMoveSelector::probe(Thread& th, Search::LimitsType& Limits)
+	{
+		Move bestMove, ponderMove;
+		if (probe_impl(th.rootPos, Limits.silent, bestMove, ponderMove))
+		{
+			auto & rootMoves = th.rootMoves;
 
 			// RootMovesに含まれているかどうかをチェックしておく。
+			// RootMovesをUSIプロトコル経由で指定されることがあるので、必ずこれはチェックしないといけない。
 			auto it_move = std::find(rootMoves.begin(), rootMoves.end(), bestMove);
 			if (it_move != rootMoves.end())
 			{
@@ -1372,21 +1411,39 @@ namespace Book
 
 				// 2手目の指し手も与えないとponder出来ない。
 				// 定跡ファイルに2手目が書いてあったなら、それをponder用に出力する。
-				if (bestPos.nextMove != MOVE_NONE)
+				if (ponderMove != MOVE_NONE)
 				{
 					if (rootMoves[0].pv.size() <= 1)
 						rootMoves[0].pv.push_back(MOVE_NONE);
-					rootMoves[0].pv[1] = bestPos.nextMove; // これが合法手でなかったら将棋所が弾くと思う。
+					rootMoves[0].pv[1] = ponderMove; // これが合法手でなかったら将棋所が弾くと思う。
 				}
-
 				// この指し手を指す
 				return true;
 			}
 		}
-
-		// 合法手のなかに含まれていなかった、もしくは定跡として選ばれる条件を満たさなかったので
-		// 定跡の指し手は指さない。
 		return false;
+	}
+
+	// ----------------------------------
+	//				misc..
+	// ----------------------------------
+
+	void insert_book_pos(PosMoveListPtr ptr, const BookPos& bp)
+	{
+		// この局面での指し手のリスト
+		auto& move_list = *ptr;
+		// すでに格納されているかも知れないので同じ指し手がないかをチェックして、なければ追加
+		for (auto& b : move_list)
+			if (b == bp)
+			{
+				// すでに存在していたのでエントリーを置換。ただし採択回数はインクリメント
+				auto num = b.num;
+				b = bp;
+				b.num += num;
+				goto FOUND_THE_SAME_MOVE;
+			}
+		move_list.push_back(bp);
+	FOUND_THE_SAME_MOVE:;
 	}
 
 }

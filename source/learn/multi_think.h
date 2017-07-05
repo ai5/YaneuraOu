@@ -17,6 +17,11 @@ struct MultiThink
 
 	// マスタースレッドからこの関数を呼び出すと、スレッドがそれぞれ思考して、
 	// 思考終了条件を満たしたところで制御を返す。
+	// 他にやってくれること。
+	// ・各スレッドがLearner::search(),qsearch()を呼び出しても安全なように
+	// 　置換表をスレッドごとに分離してくれる。(終了後、元に戻してくれる。)
+	// ・bookはon the flyモードだとthread safeではないので、このモードを一時的に
+	// 　オフにしてくれる。
 	// [要件]
 	// 1) thread_worker()のオーバーライド
 	// 2) set_loop_max()でループ回数の設定
@@ -50,18 +55,8 @@ struct MultiThink
 	Mutex io_mutex;
 
 protected:
-
-	// [ASYNC] 乱数を一つ取り出す。
-	template<typename T> T rand() {
-		std::unique_lock<Mutex> lk(rand_mutex);
-		return T(prng.rand<T>());
-	}
-
-	// [ASYNC] 0からn-1までの乱数を返す。(一様分布ではないが現実的にはこれで十分)
-	uint64_t rand(size_t n) {
-		std::unique_lock<Mutex> lk(rand_mutex);
-		return prng.rand(n);
-	}
+	// 乱数発生器本体
+	AsyncPRNG prng;
 
 private:
 	// workerが処理する(Search::think()を呼び出す)回数
@@ -71,12 +66,6 @@ private:
 
 	// ↑の変数を変更するときのmutex
 	Mutex loop_mutex;
-
-	// 乱数発生器本体
-	PRNG prng;
-
-	// ↑の乱数を取得するときのmutex
-	Mutex rand_mutex;
 
 	// スレッドの終了フラグ。
 	// vector<bool>にすると複数スレッドから書き換えようとしたときに正しく反映されないことがある…はず。

@@ -24,24 +24,14 @@
 // ターゲットCPUのところだけdefineしてください。(残りは自動的にdefineされます。)
 
 //#define USE_AVX512
-//#define USE_AVX2
+#define USE_AVX2
 //#define USE_SSE42
 //#define USE_SSE41
 //#define USE_SSE2
 //#define NO_SSE
 
-#if defined(USE_AVX2)
-#define USE_SSE42
-#define USE_SSE4
-#define USE_SSE2
-#elif defined(USE_SSE42)
-#define USE_SSE4
-#define USE_SSE2
-#elif defined(USE_SSE4)
-#define USE_SSE2
-#endif
-
 #else
+
 // Makefileを使ってbuildするときは、
 // $ make avx2
 // のようにしてビルドすれば自動的にAVX2用がビルドされます。
@@ -217,113 +207,6 @@
 
 // --- 通常の思考エンジンとして実行ファイルを公開するとき用の設定集
 
-#ifdef YANEURAOU_NANO_ENGINE
-#define ENGINE_NAME "YaneuraOu nano"
-#define ENABLE_TEST_CMD
-#define EVAL_KPP
-#define USE_TT_PV
-#define KEEP_LAST_MOVE
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#endif
-
-#ifdef YANEURAOU_NANO_PLUS_ENGINE
-#define ENGINE_NAME "YaneuraOu nano plus"
-#define ENABLE_TEST_CMD
-#define EVAL_KPP
-#define USE_TT_PV
-#define USE_SEE
-#define USE_MOVE_PICKER_2015
-#define LONG_EFFECT_LIBRARY
-#define USE_MATE_1PLY
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#endif
-
-#ifdef YANEURAOU_MINI_ENGINE
-#define ENGINE_NAME "YaneuraOu mini"
-#define ENABLE_TEST_CMD
-#define EVAL_KPP
-#define USE_SEE
-#define USE_MOVE_PICKER_2015
-#define LONG_EFFECT_LIBRARY
-#define USE_MATE_1PLY
-#define USE_DROPBIT_IN_STATS
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#endif
-
-#ifdef YANEURAOU_CLASSIC_ENGINE
-#define ENGINE_NAME "YaneuraOu classic"
-#define ENABLE_TEST_CMD
-#define EVAL_KPP
-#define USE_SEE
-#define USE_MOVE_PICKER_2015
-#define LONG_EFFECT_LIBRARY
-#define USE_MATE_1PLY
-#define USE_ENTERING_KING_WIN
-#define USE_DROPBIT_IN_STATS
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#endif
-
-#ifdef YANEURAOU_CLASSIC_TCE_ENGINE
-#define ENGINE_NAME "YaneuraOu classic-tce"
-#define ENABLE_TEST_CMD
-#define EVAL_KPP
-#define USE_SEE
-#define USE_MOVE_PICKER_2015
-#define LONG_EFFECT_LIBRARY
-#define USE_MATE_1PLY
-#define USE_ENTERING_KING_WIN
-#define USE_TIME_MANAGEMENT
-#define USE_DROPBIT_IN_STATS
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#endif
-
-#ifdef YANEURAOU_2016_MID_ENGINE
-#define ENGINE_NAME "YaneuraOu 2016 Mid"
-#define EVAL_KPPT
-//#define USE_EVAL_HASH
-#define USE_SEE
-#define USE_MOVE_PICKER_2016Q2
-#define USE_MATE_1PLY
-#define USE_ENTERING_KING_WIN
-#define USE_TIME_MANAGEMENT
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#define ONE_PLY_EQ_1
-#define ENABLE_TEST_CMD
-// 学習絡みのオプション
-#define USE_SFEN_PACKER
-#ifndef __ANDROID__
-#define EVAL_LEARN
-#endif
-// 定跡生成絡み
-#define ENABLE_MAKEBOOK_CMD
-// 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)
-#define USE_SHARED_MEMORY_IN_EVAL
-#endif
-
-#ifdef YANEURAOU_2016_LATE_ENGINE
-#define ENGINE_NAME "YaneuraOu 2016 Late"
-#define EVAL_KPPT
-//#define USE_EVAL_HASH
-#define USE_SEE
-#define USE_MOVE_PICKER_2016Q3
-#define USE_MATE_1PLY
-#define USE_ENTERING_KING_WIN
-#define USE_TIME_MANAGEMENT
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#define ONE_PLY_EQ_1
-#define PER_THREAD_COUNTERMOVEHISTORY
-#define PER_STACK_HISTORY
-
-#define ENABLE_TEST_CMD
-// 定跡生成絡み
-#define ENABLE_MAKEBOOK_CMD
-// 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)
-#define USE_SHARED_MEMORY_IN_EVAL
-// パラメーターの自動調整絡み
-#define USE_GAMEOVER_HANDLER
-//#define LONG_EFFECT_LIBRARY
-#endif
-
 #ifdef YANEURAOU_2017_EARLY_ENGINE
 #define ENGINE_NAME "YaneuraOu 2017 Early"
 #define EVAL_KPPT
@@ -353,7 +236,7 @@
 // 学習絡みのオプション
 #define USE_SFEN_PACKER
 // 学習機能を有効にするオプション。
-// #define EVAL_LEARN
+#define EVAL_LEARN
 
 // 定跡生成絡み
 #define ENABLE_MAKEBOOK_CMD
@@ -367,44 +250,6 @@
 #define USE_GLOBAL_OPTIONS
 #endif
 
-#ifdef MUST_CAPTURE_SHOGI_ENGINE
-#define ENGINE_NAME "YaneuraOu MustCaptureShogi"
-#define EVAL_KPPT
-//#define USE_EVAL_HASH
-#define USE_SEE
-#define USE_MOVE_PICKER_2016Q3
-#define USE_ENTERING_KING_WIN
-#define USE_TIME_MANAGEMENT
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#define ONE_PLY_EQ_1
-#define PER_THREAD_COUNTERMOVEHISTORY
-#define PER_STACK_HISTORY
-
-// デバッグ絡み
-#define ASSERT_LV 3
-#define USE_DEBUG_ASSERT
-
-#define ENABLE_TEST_CMD
-// 学習絡みのオプション
-#define USE_SFEN_PACKER
-#ifndef __ANDROID__
-#define EVAL_LEARN
-#endif
-// 定跡生成絡み
-#define ENABLE_MAKEBOOK_CMD
-// 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)
-#define USE_SHARED_MEMORY_IN_EVAL
-// パラメーターの自動調整絡み
-#define USE_GAMEOVER_HANDLER
-//#define LONG_EFFECT_LIBRARY
-#endif
-
-
-#ifdef RANDOM_PLAYER_ENGINE
-#define ENGINE_NAME "YaneuraOu random player"
-#define EVAL_NO_USE
-#define ASSERT_LV 3
-#endif
 
 #ifdef LOCAL_GAME_SERVER
 #define ENGINE_NAME "YaneuraOu Local Game Server"
@@ -414,6 +259,7 @@
 #define EVAL_NO_USE
 #define USE_ENTERING_KING_WIN
 #endif
+
 
 // --- 協力詰めエンジンとして実行ファイルを公開するとき用の設定集
 
@@ -498,10 +344,18 @@ struct GlobalOptions_
 	// 置換表を分割するのでLearner::search()を呼ぶまでに事前にTT.new_search()を呼び出すこと。
 	bool use_per_thread_tt;
 
+	// 置換表とTTEntryの世代が異なるなら、値(TTEntry.value)は信用できないと仮定するフラグ。
+	// TT.probe()のときに、TTEntryとTT.generationとが厳密に一致しない場合は、
+	// 置換表にhitしても、そのTTEntryはVALUE_NONEを返す。
+	// こうすることで、hash衝突しておかしな値が書き込まれていてもそれを回避できる。
+	// gensfenコマンドでこの機能が必要だった。
+	// cf. http://yaneuraou.yaneu.com/2017/06/30/%E3%80%90%E8%A7%A3%E6%B1%BA%E3%80%91gensfen%E3%81%A7%E6%95%99%E5%B8%AB%E5%B1%80%E9%9D%A2%E7%94%9F%E6%88%90%E6%99%82%E3%81%AB%E9%81%85%E3%81%8F%E3%81%AA%E3%82%8B%E5%95%8F%E9%A1%8C/
+	bool use_strict_generational_tt;
+
 	GlobalOptions_()
 	{
 		use_eval_hash = use_hash_probe = true;
-		use_per_thread_tt = false;
+		use_per_thread_tt = use_strict_generational_tt = false;
 	}
 };
 
@@ -541,10 +395,13 @@ extern GlobalOptions_ GlobalOptions;
 
 // DEBUGビルドでないとassertが無効化されてしまうので無効化されないASSERT
 // 故意にメモリアクセス違反を起こすコード。
-#ifndef USE_DEBUG_ASSERT
+// USE_DEBUG_ASSERTが有効なときには、ASSERTの内容を出力したあと、3秒待ってから
+// アクセス違反になるようなコードを実行する。
+#if !defined (USE_DEBUG_ASSERT)
 #define ASSERT(X) { if (!(X)) *(int*)1 =0; }
 #else
-#define ASSERT(X) { if (!(X)) { std::cout << "\nError : ASSERT(" << #X << ")\n"; *(int*)1 =0;} }
+#define ASSERT(X) { if (!(X)) { std::cout << "\nError : ASSERT(" << #X << ")" << std::endl; \
+ std::this_thread::sleep_for(std::chrono::microseconds(3000)); *(int*)1 =0;} }
 #endif
 
 // ASSERT LVに応じたassert
@@ -646,11 +503,9 @@ const bool pretty_jp = false;
 // ----------------------------
 
 // ターゲットが64bitOSかどうか
-#if (defined(_WIN64) && defined(_MSC_VER)) || (defined(__GNUC__) && defined(__x86_64__) || defined(IS_64BIT))
+#if (defined(_WIN64) && defined(_MSC_VER)) || (defined(__GNUC__) && defined(__x86_64__))
 const bool Is64Bit = true;
-#ifndef IS_64BIT
- #define IS_64BIT
-#endif
+#define IS_64BIT
 #else
 const bool Is64Bit = false;
 #endif
@@ -787,17 +642,6 @@ inline int MKDIR(std::string dir_name)
 // また、それらの評価関数は駒割りの計算(EVAL_MATERIAL)に依存するので、それをdefineしてやる。
 #if defined(EVAL_PP) || defined(EVAL_KPP) || defined(EVAL_KKPT) || defined(EVAL_KPPT) || defined(EVAL_PPE)
 #define USE_EVAL_DIFF
-#endif
-
-// AVX2を用いたKPPT評価関数は高速化できるので特別扱い。
-// Skylake以降でないとほぼ効果がないが…。
-#if defined(EVAL_KPPT) && defined(USE_AVX2)
-#define USE_FAST_KPPT
-// AVX2を用いるので32bitであって欲しい。
-typedef int32_t BonaPieceType;
-#else
-// テーブルサイズを節約したいのでAVX2を使わないなら16bitで十分。
-typedef int16_t BonaPieceType;
 #endif
 
 // -- 評価関数の種類により、盤面の利きの更新ときの処理が異なる。(このタイミングで評価関数の差分計算をしたいので)

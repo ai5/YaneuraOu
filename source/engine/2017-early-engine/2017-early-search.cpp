@@ -144,9 +144,6 @@ namespace YaneuraOu2017Early
 	int param1 = 0;
 	int param2 = 0;
 
-	// 定跡等で用いる乱数
-	PRNG prng;
-
 	// Ponder用の指し手
 	Move ponder_candidate;
 
@@ -307,40 +304,6 @@ namespace YaneuraOu2017Early
 			thisThread->history.update(c, quiets[i], -bonus);
 			update_cm_stats(ss, pos.moved_piece_after(quiets[i]), to_sq(quiets[i]), -bonus);
 		}
-	}
-
-	// 残り時間をチェックして、時間になっていればSignals.stopをtrueにする。
-	void check_time()
-	{
-		// 1秒ごとにdbg_print()を呼び出す処理。
-		// dbg_print()は、dbg_hit_on()呼び出しによる統計情報を表示する。
-		static TimePoint lastInfoTime = now();
-		TimePoint tick = now();
-
-		// 1秒ごとに
-		if (tick - lastInfoTime >= 1000)
-		{
-			lastInfoTime = tick;
-			dbg_print();
-		}
-
-		// ponder中においては、GUIがstopとかponderhitとか言ってくるまでは止まるべきではない。
-		if (Limits.ponder)
-			return;
-
-		// "ponderhit"時は、そこからの経過時間で考えないと、elapsed > Time.maximum()になってしまう。
-		// elapsed_from_ponderhit()は、"ponderhit"していないときは"go"コマンドからの経過時間を返すのでちょうど良い。
-		int elapsed = Time.elapsed_from_ponderhit();
-
-		// 今回のための思考時間を完璧超えているかの判定。
-
-		// 反復深化のループ内でそろそろ終了して良い頃合いになると、Time.search_endに停止させて欲しい時間が代入される。
-		// (それまではTime.search_endはゼロであり、これは終了予定時刻が未確定であることを示している。)
-		if ((Limits.use_time_management() &&
-			(elapsed > Time.maximum() - 10 || (Time.search_end > 0 && elapsed > Time.search_end - 10)))
-			|| (Limits.movetime && elapsed >= Limits.movetime)
-			|| (Limits.nodes && Threads.nodes_searched() >= (uint64_t)Limits.nodes))
-			Signals.stop = true;
 	}
 
 	// -----------------------
@@ -822,31 +785,9 @@ namespace YaneuraOu2017Early
 		//  Timerの監視
 		// -----------------------
 
-		// タイマースレッドを使うとCPU負荷的にちょっと損なので
-		// 自分で呼び出し回数をカウントして一定回数ごとにタイマーのチェックを行なう。
-
-		// いずれかのスレッドが4096カウントしたところで全スレッドのカウントをリセットして
-		// check_time()を行う。main threadだけが集計してcheck_time()を呼び出せば良さそうなものだが、
-		// そうするとmain threadだけがタイマー監視処理が必要になって、負荷分散上の観点から損であるようだ。
-
-		if (thisThread->resetCalls.load(std::memory_order_relaxed))
-		{
-			thisThread->resetCalls = false;
-
-			// Limits.nodesが指定されているときは、そのnodesの0.1%程度になるごとにチェック。
-			// さもなくばデフォルトの値を使う。
-			thisThread->callsCnt = Limits.nodes ? std::min(4096, int(Limits.nodes / 1024))
-												: 4096;
-		}
-
-		// nps 1コア時でも600kぐらい出るから、10knodeごとに調べれば0.02秒程度の精度は出るはず。
-		if (--thisThread->callsCnt <= 0)
-		{
-			for (Thread* th : Threads)
-				th->resetCalls = true;
-
-			check_time();
-		}
+		// これはメインスレッドのみが行なう。
+		if (thisThread == Threads.main())
+			static_cast<MainThread*>(thisThread)->check_time();
 
 		// -----------------------
 		//  RootNode以外での処理
@@ -2262,7 +2203,6 @@ void Search::clear()
 	// Threadsが変更になってからisreadyが送られてこないとisreadyでthread数だけ初期化しているものはこれではまずい。
 	for (Thread* th : Threads)
 	{
-		th->resetCalls = true;
 		th->counterMoves.fill(MOVE_NONE);
 		th->history.fill(0);
 
@@ -2275,6 +2215,7 @@ void Search::clear()
 		th->counterMoveHistory[SQ_ZERO][NO_PIECE].fill(CounterMovePruneThreshold - 1);
 	}
 
+	Threads.main()->callsCnt = 0;
 	Threads.main()->previousScore = VALUE_INFINITE;
 }
 
@@ -2367,7 +2308,7 @@ void Thread::search()
 	// 2つ目のrootDepth (Threads.main()->rootDepth)は深さで探索量を制限するためのもの。
 	// main threadのrootDepthがLimits.depthを超えた時点で、
 	// slave threadはこのループを抜けて良いのでこういう書き方になっている。
-	while ((rootDepth += ONE_PLY) < DEPTH_MAX
+	while ((rootDepth = rootDepth + ONE_PLY) < DEPTH_MAX
 		&& !Signals.stop
 		&& (!Limits.depth || Threads.main()->rootDepth / ONE_PLY <= Limits.depth))
 	{
@@ -2685,7 +2626,7 @@ void MainThread::think()
 	//     定跡の選択部
 	// ---------------------
 
-	if (book.probe(*this, Limits, prng))
+	if (book.probe(*this, Limits))
 		goto ID_END;
 
 	// ---------------------
@@ -2873,6 +2814,49 @@ ID_END:;
 
 }
 
+// 残り時間をチェックして、時間になっていればSignals.stopをtrueにする。
+// main threadからしか呼び出されないのでロジックがシンプルになっている。
+void MainThread::check_time()
+{
+	// 4096回に1回ぐらいのチェックで良い。
+	if (--callsCnt > 0)
+		return;
+
+	// Limits.nodesが指定されているときは、そのnodesの0.1%程度になるごとにチェック。
+	// さもなくばデフォルトの値を使う。
+	callsCnt = Limits.nodes ? std::min(4096, int(Limits.nodes / 1024)) : 4096;
+
+	// 1秒ごとにdbg_print()を呼び出す処理。
+	// dbg_print()は、dbg_hit_on()呼び出しによる統計情報を表示する。
+	static TimePoint lastInfoTime = now();
+	TimePoint tick = now();
+
+	// 1秒ごとに
+	if (tick - lastInfoTime >= 1000)
+	{
+		lastInfoTime = tick;
+		dbg_print();
+	}
+
+	// ponder中においては、GUIがstopとかponderhitとか言ってくるまでは止まるべきではない。
+	if (Limits.ponder)
+		return;
+
+	// "ponderhit"時は、そこからの経過時間で考えないと、elapsed > Time.maximum()になってしまう。
+	// elapsed_from_ponderhit()は、"ponderhit"していないときは"go"コマンドからの経過時間を返すのでちょうど良い。
+	int elapsed = Time.elapsed_from_ponderhit();
+
+	// 今回のための思考時間を完璧超えているかの判定。
+
+	// 反復深化のループ内でそろそろ終了して良い頃合いになると、Time.search_endに停止させて欲しい時間が代入される。
+	// (それまではTime.search_endはゼロであり、これは終了予定時刻が未確定であることを示している。)
+	if ((Limits.use_time_management() &&
+		(elapsed > Time.maximum() - 10 || (Time.search_end > 0 && elapsed > Time.search_end - 10)))
+		|| (Limits.movetime && elapsed >= Limits.movetime)
+		|| (Limits.nodes && Threads.nodes_searched() >= (uint64_t)Limits.nodes))
+		Signals.stop = true;
+}
+
 #ifdef EVAL_LEARN
 
 namespace Learner
@@ -2915,17 +2899,6 @@ namespace Learner
 
 			for (int i = 4; i > 0; i--)
 				(ss - i)->history = &th->counterMoveHistory[SQ_ZERO][NO_PIECE];
-
-#if 0
-			// 余裕があるならhistory等もクリアしておく。
-			// したほうがいいかは微妙だが…。
-			th->history.clear();
-			th->counterMoves.clear();
-			th->fromTo.clear();
-		//	th->counterMoveHistory.clear();
-			// →　このクリア、時間がかかりすぎるのでまあいいや。
-#endif
-			th->resetCalls = true;
 
 			// rootMovesの設定
 			auto& rootMoves = th->rootMoves;
@@ -3005,8 +2978,9 @@ namespace Learner
 	//   auto v = search(pos,3);
 	// のようにすべし。
 	// v.firstに評価値、v.secondにPVが得られる。
-	// MultiPVが有効のときは、pos.this_thread()->rootMoves[N].pvにそのPV(読み筋)の配列が得られる。
-	//
+	// multi pvが有効のときは、pos.this_thread()->rootMoves[N].pvにそのPV(読み筋)の配列が得られる。
+	// multi pvの指定はこの関数の引数multiPVで行なう。(Options["MultiPV"]の値は無視される)
+	// 
 	// 返されるpv配列には宣言勝ち(MOVE_WIN)も含まれるので注意。
 	//
 	// 前提条件) pos.set_this_thread(Threads[thread_id])で探索スレッドが設定されていること。
@@ -3014,7 +2988,7 @@ namespace Learner
 	// 　search()から戻ったあと、Signals.stop == trueなら、その探索結果を用いてはならない。
 	// 　あと、呼び出し前は、Signals.stop == falseの状態で呼び出さないと、探索を中断して返ってしまうので注意。
 
-	ValueAndPV search(Position& pos, int depth_)
+	ValueAndPV search(Position& pos, int depth_ , size_t multiPV /* = 1*/)
 	{
 		std::vector<Move> pvs;
 
@@ -3047,7 +3021,8 @@ namespace Learner
 		auto& completedDepth = th->completedDepth;
 
 		// bestmoveとしてしこの局面の上位N個を探索する機能
-		size_t multiPV = Options["MultiPV"];
+		//size_t multiPV = Options["MultiPV"];
+
 		// この局面での指し手の数を上回ってはいけない
 		multiPV = std::min(multiPV, rootMoves.size());
 
@@ -3056,7 +3031,7 @@ namespace Learner
 		Value delta = -VALUE_INFINITE;
 		Value bestValue = -VALUE_INFINITE;
 
-		while ((rootDepth+=ONE_PLY) <= depth)
+		while ((rootDepth = rootDepth + ONE_PLY) <= depth)
 		{
 			for (RootMove& rm : rootMoves)
 				rm.previousScore = rm.score;

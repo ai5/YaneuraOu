@@ -148,7 +148,7 @@ namespace Eval {
 
 	// BonanzaでKKP/KPPと言うときのP(Piece)を表現する型。
 	// Σ KPPを求めるときに、39の地点の歩のように、升×駒種に対して一意な番号が必要となる。
-	enum BonaPiece : BonaPieceType
+	enum BonaPiece : int32_t
 	{
 		// f = friend(≒先手)の意味。e = enemy(≒後手)の意味
 
@@ -198,6 +198,8 @@ namespace Eval {
 		e_hand_rook = 88,//f_hand_rook + 3,//87+1
 		fe_hand_end = 90,//e_hand_rook + 3,//90
 
+#else 
+		fe_hand_end = 0,
 #endif                     
 
 		// Bonanzaのように盤上のありえない升の歩や香の番号を詰めない。
@@ -340,7 +342,10 @@ namespace Eval {
 		}
 
 		// 駒リスト。駒番号(PieceNo)いくつの駒がどこにあるのか(BonaPiece)を示す。FV38などで用いる。
-#if defined(USE_FAST_KPPT)
+#if defined(EVAL_KPPT) && defined(USE_AVX2)
+		// AVX2を用いたKPPT評価関数は高速化できるので特別扱い。
+		// Skylake以降でないとほぼ効果がないが…。
+
 		// AVX2の命令でアクセスするのでalignas(32)が必要。
 		alignas(32) BonaPiece pieceListFb[PIECE_NO_NB];
 		alignas(32) BonaPiece pieceListFw[PIECE_NO_NB];

@@ -89,7 +89,7 @@ inline TimePoint now() {
 // 指定されたミリ秒だけsleepする。
 inline void sleep(int ms)
 {
-	std::this_thread::sleep_for(std::chrono::microseconds(ms));
+	std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
 // 現在時刻を文字列化したもを返す。(評価関数の学習時などに用いる)
@@ -193,7 +193,7 @@ inline uint64_t get_thread_id()
 // UniformRandomNumberGenerator互換にして、std::shuffle()等でも使えるようにするべきか？
 struct PRNG
 {
-	PRNG(uint64_t seed) : s(seed) { ASSERT_LV1(seed); }
+	PRNG(u64 seed) : s(seed) { ASSERT_LV1(seed); }
 
 	// 時刻などでseedを初期化する。
 	PRNG() {
@@ -210,15 +210,35 @@ struct PRNG
 	template<typename T> T rand() { return T(rand64()); }
 
 	// 0からn-1までの乱数を返す。(一様分布ではないが現実的にはこれで十分)
-	uint64_t rand(size_t n) { return rand<uint64_t>() % n; }
+	u64 rand(u64 n) { return rand<u64>() % n; }
 
 private:
-	uint64_t s;
+	u64 s;
 public:
-	uint64_t rand64() {
+	u64 rand64() {
 		s ^= s >> 12, s ^= s << 25, s ^= s >> 27;
 		return s * 2685821657736338717LL;
 	}
+};
+
+// PRNGのasync版
+struct AsyncPRNG
+{
+	// [ASYNC] 乱数を一つ取り出す。
+	template<typename T> T rand() {
+		std::unique_lock<Mutex> lk(mutex);
+		return prng.rand<T>();
+	}
+
+	// [ASYNC] 0からn-1までの乱数を返す。(一様分布ではないが現実的にはこれで十分)
+	u64 rand(u64 n) {
+		std::unique_lock<Mutex> lk(mutex);
+		return prng.rand(n);
+	}
+
+protected:
+	Mutex mutex;
+	PRNG prng;
 };
 
 // --------------------
