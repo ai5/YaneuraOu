@@ -1,3 +1,65 @@
+〇ver 4.72
+
+・arm64-v8a
+info depth 17 seldepth 37 score cp -4647 nodes 3093804 nps 114704 hashfull 526 time 26972 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 1b2b S*3d S*3b 3d4c+ 3b4c R*4b S*3b G*2c 2b3a 2c3b 4c3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 135580
+Nodes searched  : 15080409
+Nodes/second    : 111228
+
+
+・x86_64
+info depth 17 seldepth 37 score cp -4647 nodes 3093804 nps 186767 hashfull 526 time 16565 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 1b2b S*3d S*3b 3d4c+ 3b4c R*4b S*3b G*2c 2b3a 2c3b 4c3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 94233
+Nodes searched  : 15080409
+Nodes/second    : 160033
+
+
+・win
+info depth 17 seldepth 37 score cp -4647 nodes 3093804 nps 579038 hashfull 526 time 5343 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 1b2b S*3d S*3b 3d4c+ 3b4c R*4b S*3b G*2c 2b3a 2c3b 4c3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 30499
+Nodes searched  : 15080409
+Nodes/second    : 494455
+
+
+〇ver 4.70
+
+・arm64-v8a
+
+info depth 17 seldepth 37 score cp -4647 nodes 3093804 nps 160118 hashfull 526 time 19322 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 1b2b S*3d S*3b 3d4c+ 3b4c R*4b S*3b G*2c 2b3a 2c3b 4c3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 155574
+Nodes searched  : 15080409
+Nodes/second    : 96933
+
+・x86_64
+info depth 17 seldepth 37 score cp -4647 nodes 3093804 nps 193109 hashfull 526 time 16021 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 1b2b S*3d S*3b 3d4c+ 3b4c R*4b S*3b G*2c 2b3a 2c3b 4c3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 93552
+Nodes searched  : 15080409
+Nodes/second    : 161198
+
+・win
+info depth 17 seldepth 37 score cp -4647 nodes 3093804 nps 540685 hashfull 526 time 5722 pv G*1c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b2b 1b2b S*3d S*3b 3d4c+ 3b4c R*4b S*3b G*2c 2b3a 2c3b 4c3b
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 32283
+Nodes searched  : 15080409
+Nodes/second    : 467131
+
 〇やねうら王ver 4.65
 
 ・arm64-v8a

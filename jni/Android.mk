@@ -18,11 +18,11 @@ include $(CLEAR_VARS)
 
 ARCH_DEF := -DTARGET_ARCH="$(TARGET_ARCH_ABI)"
 ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
-  ARCH_DEF += -DIS_64BIT -DIS_ARM
+  ARCH_DEF += -DIS_64BIT -DIS_ARM -DUSE_MAKEFILE -DYANEURAOU_2017_EARLY_ENGINE
 endif
 
 ifeq ($(TARGET_ARCH_ABI),x86_64)
-  ARCH_DEF += -DIS_64BIT -DUSE_SSE42 -msse4.2
+  ARCH_DEF += -DUSE_SSE42 -DUSE_MAKEFILE  -DYANEURAOU_2017_EARLY_ENGINE -msse4.2
 endif
 
 
@@ -48,15 +48,10 @@ LOCAL_SRC_FILES := ../source/bitboard.cpp ../source/misc.cpp ../source/movegen.c
            ../source/extra/long_effect.cpp \
            ../source/extra/mate/mate1ply_without_effect.cpp ../source/extra/mate/mate1ply_with_effect.cpp \
            ../source/extra/mate/mate_n_ply.cpp \
-           ../source/extra/move_picker/move_picker_2016Q2.cpp \
-           ../source/extra/move_picker/move_picker_2016Q3.cpp \
            ../source/extra/move_picker/move_picker_2017Q2.cpp \
            ../source/extra/see.cpp \
            ../source/extra/test_cmd.cpp ../source/extra/benchmark.cpp \
            ../source/extra/timeman.cpp \
-           ../source/engine/classic-tce-engine/classic-tce-search.cpp \
-           ../source/engine/2016-mid-engine/2016-mid-search.cpp \
-           ../source/engine/2016-late-engine/2016-late-search.cpp \
            ../source/engine/2017-early-engine/2017-early-search.cpp \
            ../source/engine/user-engine/user-search.cpp
 
