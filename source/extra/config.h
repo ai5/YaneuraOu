@@ -503,9 +503,11 @@ const bool pretty_jp = false;
 // ----------------------------
 
 // ターゲットが64bitOSかどうか
-#if (defined(_WIN64) && defined(_MSC_VER)) || (defined(__GNUC__) && defined(__x86_64__))
+#if (defined(_WIN64) && defined(_MSC_VER)) || (defined(__GNUC__) && defined(__x86_64__)) || defined(IS_64BIT)
 const bool Is64Bit = true;
+#ifndef IS_64BIT
 #define IS_64BIT
+#endif
 #else
 const bool Is64Bit = false;
 #endif
