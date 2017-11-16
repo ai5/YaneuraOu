@@ -174,6 +174,15 @@ USIプロトコルの独自拡張コマンド
 							  book/book.sfen
 							  のように指定する。
 
+	DepthLimit				: 探索深さ制限する(0 = 制限なし)
+	NodesLimit				: 探索node数を制限する(0 = 制限なし)
+		→　この2つは、GUI側がgoコマンドのときにdepthとかnodeとか指定すべきような気はするが、
+			とりあえずGUI側がそうなっていないので用意した。
+			NodesLimitは正確にそのnodeで停止するわけではなく多少の誤差はある。
+
+	SkipLoadingEval  : 評価関数の読み込みをskipさせる。ゼロで埋めた評価関数を用意できないときや、
+		新しい形式の評価関数が用意できないときに、評価関数の読み込みをskipさせるために用いる。
+		"test evalconvert"コマンドと組み合わせて使う。詳しくは、解説.txtのほうを参照のこと。
 
 ・getoption
 
@@ -233,6 +242,8 @@ USIプロトコルの独自拡張コマンド
 
 
 	test    : テスト用コマンド
+		実験的に実装してあるコマンドで、突然無くなることがあります。
+
 		test unit            : unit test
 		test perft [depth]   : perft(パフォーマンステスト)。深さを指定できる。
 		test rp    [回数]    : random playerのテスト。回数を指定できる。
@@ -245,11 +256,20 @@ USIプロトコルの独自拡張コマンド
 				指定されたPERCENTで按分してDIR3に書き出す。(やねうら王2017Early以降のみ)
 				例) test evalmerge eval1 eval2 eval_out 20
 				  このときeval1が20%、eval2が80%の新しい評価関数ファイルがeval_out/フォルダに出力される。
+		test evalsave        : 現在の評価関数をファイルに保存。"EvalSaveDir"オプションで指定したフォルダに保存。
 		test evalresolve [DIR0] [DIR1] [DIR2] ...
 				DIR0,DIR1,DIR2,…は、評価関数フォルダ。
 				DIR0の評価関数が、DIR1,DIR2,…の、どの評価関数からevalmergeされているのかを調べる。
 					X1 DIR1 + X2 DIR2 + X3 DIR3 + ...
 				のような形で分解した結果を教えてくれる。
+				
+				以下の記事も参考に。
+
+				・評価関数ファイルの合成、学習元を解析するツールREsolveMUtationエンジンを公開します
+					http://qhapaq.hatenablog.com/entry/2017/07/16/040830
+				・REsolve MUtationエンジンの使い方
+					http://qhapaq.hatenablog.com/entry/2017/07/17/001152
+
 
 	log		: ログファイル("io_log.txt")に標準入出力を書き出す設定。Write Debug Logでon/offも出来る。
 
@@ -274,19 +294,46 @@ USIプロトコルの独自拡張コマンド
 
 		その他に指定できるオプション
 
+		write_minply N :
+			初期局面周辺は、類似局面ばかりなので、初期局面から数えてN手未満の局面は教師局面として書き出さない。
+			デフォルトでは16。
+			初期局面を書き出すなら、Nに1を指定する。
+		write_maxply N :
+			書き出す局面の初期局面からの手数の最大。この手数を超えると引き分け扱いとする。
+			デフォルトでは400。
+
 		random_move_minply,random_move_maxplyとrandom_move_countオプション
 			教師局面の生成時にランダムムーブを行なう最小手数と最大手数と1局でランダムムーブを行なう回数
 			デフォルトではrandom_move_minply = 16 , random_move_maxply = 32 , random_move_count = 5。
 			// 16手目から24手目までに5回のランダムムーブを行なうという意味
-			learn random_move_maxply 16 random_move_maxply 32 random_move_count 5 ...
+			gensfen random_move_maxply 16 random_move_maxply 32 random_move_count 5 ...
 			みたいに指定する。
+
+			特殊な指定として、
+			random_move_minplyに-1を指定すると、
+			定跡を抜けるところまで定跡に従って指して、そのあと定跡局面を抜けた直後に
+			random_move_count回のランダムムーブを行なうという挙動になる。
+
+		random_move_like_apery N : ランダムムーブのときに玉を移動させる指し手の確率を上げる。
+			例えば、N = 3を指定すれば1/3の確率で玉を移動させる。
+				(そしてこのとき、玉を移動させたあとは1/2の確率で相手番もランダムムーブが入る。)
+				玉を移動させないときは普通に合法手から1手選択。(玉を移動させる指し手も含まれる)
+			このオプションに0を指定すると、この機能は無効化される。
 
 		random_multi_pv N : ランダムムーブの代わりにMultiPV Nでrandom_move_count手指すオプション。
 			ConsiderBookMoveCount = trueと組み合わせると実現確率の高い局面からスタートできるかも…。
+			0を指定するとこの機能は無効。
 		random_multi_pv_diff m : random_multipvでmulti pvで指し手を採択するときに、
 			1位の指し手の評価値との評価値の差がmに収まる範囲の指し手しか採択しない。
 			デフォルトでは32000。(範囲の限度なし)
 		random_multi_pv_depth : random_multipvするときの探索深さ。指定しない場合、gensfenで指定したdepth。
+
+		use_eval_hash b : 同じ局面に遭遇したときのために評価値を保存しておく機能。
+			これをオンにすると、hash衝突したときに間違った局面の評価値を使ってしまうため、
+			オフにすることを推奨。ただし、eval_limitを32000などのように大きくとる場合、
+			間違った評価値でもいずれは新しい局面で上書きされるため、影響は軽微であるからオンのほうが良いかも。
+			(オンにしないと局面の生成が2割ぐらい遅くなりかねないので)
+			オンにするにはuse_eval_hash 1のようにbのところに1を指定する。オフにするには0を指定する。
 
 ・教師局面から評価関数の学習
 
@@ -320,6 +367,40 @@ USIプロトコルの独自拡張コマンド
 			読み込み時に先読みでのシャッフルを行わない。
 			これを指定しないときは1000万局面ごとにシャッフルしながら読み込む。
 			(デフォルトではオフ)
+		lambda elmo(WCSC27)式を内分形式にしたときのlambda。
+			elmo(WCSC27)と同じにするには0.33を指定すれば良い。
+			参考)
+				grad = (1 - lambda) * (eval_winrate - t) + lambda * (eval_winrate - teacher_winrate);
+		lambda2 , lambda_limit
+			深い探索の評価値の絶対値がlambda_limit以上のときは、lambdaではなくlambda2のほうを適用する。
+			デフォルトではlambda_limit = 32000なのでlambda2が適用されることはない。
+
+		freeze_kk  bool : 
+		freeze_kkp bool : 
+		freeze_kpp bool :
+
+			KK,KKP,KPPのうち、KK/KKP/KPPを学習させないオプション。trueにするとその特徴因子は学習しない。
+			オンにするにはfreeze_kpp 1のように1を指定する。オフにするには0を指定する。
+
+			また、KKPP_KPPTのようなKKPPを持つ評価関数の場合、freeze_kkppというオプションが使える。
+			同様に、KPPP_KPPTのようなKPPPを持つ評価関数の場合、freeze_kpppというオプションが使える。
+
+		eta 学習率
+			AdaGradの学習率を設定する。30.0が標準的な学習率。
+			これを上げるとパラメーターの更新のときの一回の変化量が大きくなる。
+			(大きければ良いというわけでもない)
+			etaの代わりにeta1と指定しても良い。
+			また0を指定するとデフォルト値(30.0)になる。
+
+			etaを連続的に変化させるには、
+				eta1 0.01 eta2 500 eta1_epoch 100 eta3 30 eta2_epoch 500
+			のように指定する。
+
+			この場合、etaは0.01から始まり、epoch 100までに徐々に増加し、epoch 100で500になる。
+			そのあと、徐々に減り、epoch 500で30になる。そこ以降は30のまま。
+			eta1_epoch , eta2_epochを指定しなければこのような機能はオフになる。
+			たとえばeta2_epochを指定しない場合、eta3は無視される。
+
 
 		保存するフォルダは"EvalSaveDir"で指定したフォルダ。
 		デフォルトでは"evalsave"。このフォルダは事前に用意されているものとする。

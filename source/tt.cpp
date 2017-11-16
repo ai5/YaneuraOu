@@ -1,4 +1,5 @@
 ﻿#include "tt.h"
+#include "misc.h"
 
 TranspositionTable TT; // 置換表をglobalに確保。
 
@@ -27,7 +28,7 @@ void TranspositionTable::resize(size_t mbSize) {
 	{
 		std::cout << "info string Error : Failed to allocate " << mbSize
 			<< "MB for transposition table. ClusterCount = " << newClusterCount << std::endl;
-		exit(EXIT_FAILURE);
+		my_exit();
 	}
 
 	table = (Cluster*)((uintptr_t(mem) + CacheLineSize - 1) & ~(CacheLineSize - 1));
@@ -95,8 +96,8 @@ TTEntry* TranspositionTable::probe(const Key key, bool& found
 	for (int i = 0; i < ClusterSize; ++i)
 	{
 		// returnする条件
-		// 1. keyが合致しているentryを見つけた。(found==trueにしてそのTT_ENTRYのアドレスを返す)
-		// 2. 空のエントリーを見つけた(そこまではkeyが合致していないので、found==falseにして新規TT_ENTRYのアドレスとして返す)
+		// 1. 空のエントリーを見つけた(そこまではkeyが合致していないので、found==falseにして新規TT_ENTRYのアドレスとして返す)
+		// 2. keyが合致しているentryを見つけた。(found==trueにしてそのTT_ENTRYのアドレスを返す)
 
 		// Stockfishのコードだと、1.が成立したタイミングでもgenerationのrefreshをしているが、
 		// save()のときにgenerationを書き出すため、このケースにおいてrefreshは必要ない。
@@ -109,10 +110,10 @@ TTEntry* TranspositionTable::probe(const Key key, bool& found
 		if (tte[i].key16 == key16)
 		{
 #if defined(USE_GLOBAL_OPTIONS)
-			// 置換表とTTEntryの世代が異なるなら、値は信用できないと仮定するフラグ。
+			// 置換表とTTEntryの世代が異なるなら、信用できないと仮定するフラグ。
 			if (GlobalOptions.use_strict_generational_tt)
 				if (tte[i].generation() != gen8)
-					tte[i].set_value(VALUE_NONE);
+					return found = false, &tte[i];
 #endif
 
 			tte[i].set_generation(gen8); // Refresh

@@ -3,17 +3,22 @@
 
 #include "../shogi.h"
 
-#if defined(EVAL_LEARN) && defined(YANEURAOU_2017_EARLY_ENGINE)
+#if defined(EVAL_LEARN) && \
+	(defined(YANEURAOU_2017_EARLY_ENGINE) || defined(YANEURAOU_2017_GOKU_ENGINE))
 
 #include "../misc.h"
 #include "../learn/learn.h"
+#include <atomic>
 
 // 棋譜からの学習や、自ら思考させて定跡を生成するときなど、
 // 複数スレッドが個別にSearch::think()を呼び出したいときに用いるヘルパクラス。
 // このクラスを派生させて用いる。
 struct MultiThink
 {
-	MultiThink() {}
+	MultiThink()
+	{
+		loop_count = 0;
+	}
 
 	// マスタースレッドからこの関数を呼び出すと、スレッドがそれぞれ思考して、
 	// 思考終了条件を満たしたところで制御を返す。
@@ -60,9 +65,9 @@ protected:
 
 private:
 	// workerが処理する(Search::think()を呼び出す)回数
-	volatile u64 loop_max;
+	std::atomic<u64> loop_max;
 	// workerが処理した(Search::think()を呼び出した)回数
-	volatile u64 loop_count = 0;
+	std::atomic<u64> loop_count;
 
 	// ↑の変数を変更するときのmutex
 	Mutex loop_mutex;

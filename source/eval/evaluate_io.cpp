@@ -1,4 +1,5 @@
 ﻿#include "evaluate_io.h"
+#include "../misc.h"
 
 namespace EvalIO
 {
@@ -31,12 +32,13 @@ namespace EvalIO
 				// 型ごとにサイズが異なる
 				switch (feature)
 				{
-				case KK  : block_size *= (sq_nb ) * (sq_nb)                       ; break;
-				case KKP : block_size *= (sq_nb ) * (sq_nb)  * (fe_end)           ; break;
-				case KPP : block_size *= (sq_nb ) * (fe_end) * (fe_end)           ; break;
-				case PP  : block_size *= (fe_end) * (fe_end)                      ; break;
-				case KKPP: block_size *= (sq_nb ) * (sq_nb)  * (fe_end) * (fe_end); break;
-				case KPPP: block_size *= (sq_nb ) * (fe_end) * (fe_end) * (fe_end); break;
+				case KK  : block_size *= (sq_nb  ) * (sq_nb  )                      ; break;
+				case KKP : block_size *= (sq_nb  ) * (sq_nb  ) * (fe_end)           ; break;
+				case KPP : block_size *= (sq_nb  ) * (fe_end ) * (fe_end)           ; break;
+				case PP  : block_size *= (fe_end ) * (fe_end )                      ; break;
+				case KKPP: block_size *= (sq_nb  ) * (sq_nb  ) * (fe_end) * (fe_end); break;
+				case KPPP: block_size *= (sq_nb  ) * (fe_end ) * (fe_end) * (fe_end); break;
+				case VAR : block_size *= 1; break;
 				default:
 					ASSERT_LV1(false);
 				}
@@ -67,22 +69,34 @@ namespace EvalIO
 				// file to memory
 				else if (in_.file_or_memory.file() && out_.file_or_memory.memory())
 				{
-					std::ifstream ifs(in_.file_or_memory.filename, std::ios::binary);
-					if (ifs) ifs.read(reinterpret_cast<char*>(out_.file_or_memory.ptr), input_block_size);
-					else
+					if (read_file_to_memory(in_.file_or_memory.filename, [&](u64 size) {
+						if (size != input_block_size)
+						{
+							std::cout << "info string Error! : file size incorrect , file = " << in_.file_or_memory.filename
+								<< " , actual size = "<< size << " , needed_size = " << input_block_size << std::endl;
+							return (void*)nullptr;
+						}
+						return out_.file_or_memory.ptr;
+					}) != 0)
 					{
-						// ToDo : read()自体に失敗したことも検出すべきなのだが、うまい書き方がよくわからない。
-
-						std::cout << "info string read file error , file = " << in_.file_or_memory.filename << std::endl;
-						return false;
+#if defined(EVAL_LEARN)
+						if (Options["SkipLoadingEval"])
+						{
+							std::cout << "info string read file error , file = " << in_.file_or_memory.filename << " , but SkipLoadingEval == true , so ignore this." << std::endl;
+							memset(out_.file_or_memory.ptr, 0, input_block_size);
+						}
+						else
+#endif
+						{
+							std::cout << "info string Error! : read file error , file = " << in_.file_or_memory.filename << std::endl;
+							return false;
+						}
 					}
 				}
 				// memory to file
 				else if (in_.file_or_memory.memory() && out_.file_or_memory.file())
 				{
-					std::ofstream ofs(out_.file_or_memory.filename, std::ios::binary);
-					if (ofs) ofs.write(reinterpret_cast<char*>(in_.file_or_memory.ptr), output_block_size);
-					else
+					if (write_memory_to_file(out_.file_or_memory.filename, in_.file_or_memory.ptr, output_block_size) != 0)
 					{
 						std::cout << "info string write file error , file = " << out_.file_or_memory.filename << std::endl;
 						return false;
@@ -131,13 +145,15 @@ namespace EvalIO
 					input_buffer.resize(input_block_size);
 					in_ptr = (void*)&input_buffer[0];
 
-					std::ifstream ifs(in_.file_or_memory.filename, std::ios::binary);
-					if (ifs) ifs.read(reinterpret_cast<char*>(in_ptr), input_block_size);
-					else
-					{
-						std::cout << "info string read file error , file = " << in_.file_or_memory.filename << std::endl;
+					if (read_file_to_memory(in_.file_or_memory.filename, [&](u64 file_size) {
+						if (file_size != input_block_size)
+						{
+							std::cout << "info string Error! file_size = " << file_size << " , input_block_size = " << input_block_size << std::endl;
+							return (void*)nullptr;
+						}
+						return in_ptr;
+					}) != 0)
 						return false;
-					}
 				}
 
 				// 3) 変換する
@@ -208,8 +224,6 @@ namespace EvalIO
 							}
 					break;
 
-				// --- ここ以下のコードはテストしていないので合ってるかどうかわからん…。
-
 				case KPP:
 					for (u64 k1 = 0; k1 < output.sq_nb; ++k1)
 						for (u64 p1 = 0; p1 < output.fe_end; ++p1)
@@ -225,6 +239,7 @@ namespace EvalIO
 						}
 					break;
 
+				// ここから下のコードはテストしていない。間違っていても知らん。
 				case PP:
 					for (u64 p1 = 0; p1 < output.fe_end; ++p1)
 					{
@@ -256,6 +271,7 @@ namespace EvalIO
 					break;
 
 				case KPPP:
+					// こんな正方配列は、メモリきつすぎ。
 					for (u64 k1 = 0; k1 < output.sq_nb; ++k1)
 						for (u64 p1 = 0; p1 < output.fe_end; ++p1)
 						{
@@ -273,15 +289,17 @@ namespace EvalIO
 							}
 						}
 					break;
+
+				case VAR:
+					conv((u8*)in_ptr , (u8*)out_ptr);
+					break;
 				}
 
 				// 4) 出力先がファイルなら、出力バッファの内容を書き出す
 
 				if (out_.file_or_memory.ptr == nullptr)
 				{
-					std::ofstream ofs(out_.file_or_memory.filename, std::ios::binary);
-					if (ofs) ofs.write(reinterpret_cast<char*>(out_ptr), output_block_size);
-					else
+					if (write_memory_to_file(out_.file_or_memory.filename , out_ptr , output_block_size) != 0)
 					{
 						std::cout << "info string write file error , file = " << out_.file_or_memory.filename << std::endl;
 						return false;

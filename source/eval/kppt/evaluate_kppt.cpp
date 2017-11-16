@@ -1,4 +1,4 @@
-﻿#include "../shogi.h"
+﻿#include "../../shogi.h"
 
 //
 // Apery WCSC26の評価関数バイナリを読み込むための仕組み。
@@ -18,14 +18,15 @@
 #include <unordered_set>
 
 #include "evaluate_kppt.h"
-#include "evaluate_io.h"
-#include "../evaluate.h"
-#include "../position.h"
-#include "../misc.h"
+#include "../evaluate_io.h"
+#include "../../evaluate.h"
+#include "../../position.h"
+#include "../../misc.h"
+#include "../../extra/bitop.h"
 
 // 実験中の評価関数を読み込む。(現状非公開)
 #if defined (EVAL_EXPERIMENTAL)
-#include "experimental/evaluate_experimental.h"
+#include "../experimental/evaluate_experimental.h"
 #endif
 
 // EvalShareの機能を使うために必要
@@ -35,29 +36,22 @@
 #include <windows.h>
 #endif
 
+#if defined(EVAL_LEARN)
+#include "../../learn/learning_tools.h"
+using namespace EvalLearningTools;
+#endif
+
 using namespace std;
 
 namespace Eval
 {
 
-// 評価関数パラメーター
-#if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_WIN32)
-
-	// 共有メモリ上に確保する場合。
+	// 評価関数パラメーター
+	// 2GBを超える配列は確保できないようなのでポインターにしておき、動的に確保する。
 
 	ValueKk(*kk_)[SQ_NB][SQ_NB];
-	ValueKpp(*kpp_)[SQ_NB][fe_end][fe_end];
 	ValueKkp(*kkp_)[SQ_NB][SQ_NB][fe_end];
-
-#else
-
-	// 通常の評価関数テーブル。
-
-	ALIGNED(32) ValueKk kk[SQ_NB][SQ_NB];
-	ALIGNED(32) ValueKpp kpp[SQ_NB][fe_end][fe_end];
-	ALIGNED(32) ValueKkp kkp[SQ_NB][SQ_NB][fe_end];
-
-#endif
+	ValueKpp(*kpp_)[SQ_NB][fe_end][fe_end];
 
 	// 評価関数ファイルを読み込む
 	void load_eval_impl()
@@ -76,42 +70,8 @@ namespace Eval
 			goto Error;
 
 		{
-#if defined(EVAL_LEARN)
-			// kppのp1==p2のところ、値はゼロとなっていること。
-			// (差分計算のときにコードの単純化のために参照はするけど学習のときに使いたくないので)
-			// kppのp1==p2のときはkkpに足しこまれているという考え。
-			{
-				const ValueKpp kpp_zero = { 0,0 };
-				float sum = 0;
-				for (auto sq : SQ)
-					for (auto p = BONA_PIECE_ZERO; p < fe_end; ++p)
-					{
-						sum += abs(kpp[sq][p][p][0]) + abs(kpp[sq][p][p][1]);
-						kpp[sq][p][p] = kpp_zero;
-					}
-			//	cout << "info string sum kp = " << sum << endl;
-			}
-
-#endif
-
-#if defined(EVAL_LEARN)
-			// 以前Aperyの評価関数バイナリ、kppのp=0のところでゴミが入っていた。
-			// 駒落ちなどではここを利用したいので0クリアすべき。
-			{
-				const ValueKkp kkp_zero = { 0,0 };
-				for (auto sq1 : SQ)
-					for (auto sq2 : SQ)
-						kkp[sq1][sq2][0] = kkp_zero;
-
-				const ValueKpp kpp_zero = { 0,0 };
-				for (auto sq : SQ)
-					for (BonaPiece p1 = BONA_PIECE_ZERO; p1 < fe_end; ++p1)
-					{
-						kpp[sq][p1][0] = kpp_zero;
-						kpp[sq][0][p1] = kpp_zero;
-					}
-			}
-#endif
+			// 読み込み後に値を補正するとcheck sumが変化してしまうので、値の補正はlearnコマンド実行時にやるように変更した。
+			// ここではそれ以外の実験用の補正コードを書いておく。
 
 #if 0
 			// Aperyの評価関数バイナリ、kkptは意味があるけどkpptはあまり意味がないので
@@ -147,8 +107,8 @@ namespace Eval
 				for (BonaPiece p1 = BONA_PIECE_ZERO; p1 < fe_hand_end; ++p1)
 					for (BonaPiece p2 = BONA_PIECE_ZERO; p2 < fe_end; ++p2)
 					{
-							kpp[sq][p1][p2][1] = 0;
-							kpp[sq][p2][p1][1] = 0;
+						kpp[sq][p1][p2][1] = 0;
+						kpp[sq][p2][p1][1] = 0;
 					}
 #endif
 
@@ -169,24 +129,30 @@ namespace Eval
 	Error:;
 		// 評価関数ファイルの読み込みに失敗した場合、思考を開始しないように抑制したほうがいいと思う。
 		sync_cout << "\ninfo string Error! open evaluation file failed.\n" << sync_endl;
-		sleep(1000); // 出力される前に終了するのはまずいのでwaitを入れておく。
-		exit(EXIT_FAILURE);
+		my_exit();
 	}
-
 
 	u64 calc_check_sum()
 	{
 		u64 sum = 0;
 
-		auto add_sum = [&](u32*ptr, size_t t)
+		auto add_sum = [&](u16*ptr, size_t t)
 		{
 			for (size_t i = 0; i < t; ++i)
 				sum += ptr[i];
 		};
 
-		add_sum(reinterpret_cast<u32*>(kk), sizeof(kk) / sizeof(u32));
-		add_sum(reinterpret_cast<u32*>(kkp), sizeof(kkp) / sizeof(u32));
-		add_sum(reinterpret_cast<u32*>(kpp), sizeof(kpp) / sizeof(u32));
+		// sizeof演算子、2GB以上の配列に対して機能しない。VC++でC2070になる。
+		// そのため、sizeof(kpp)のようにせず、自前で計算している。
+
+		// データは2 or 4バイトなので、endiannessがどちらであっても
+		// これでcheck sumの値は変わらない。
+		// また、データが2 or 4バイトなので2バイトずつ加算していくとき、
+		// データの余りは出ない。
+
+		add_sum(reinterpret_cast<u16*>(kk) , size_of_kk  / sizeof(u16));
+		add_sum(reinterpret_cast<u16*>(kkp), size_of_kkp / sizeof(u16));
+		add_sum(reinterpret_cast<u16*>(kpp), size_of_kpp / sizeof(u16));
 
 		return sum;
 	}
@@ -198,6 +164,30 @@ namespace Eval
 #endif
 	}
 
+	// 与えられたsize_of_evalサイズの連続したalign 32されているメモリに、kk_,kkp_,kpp_を割り当てる。
+	void eval_assign(void* ptr)
+	{
+		s8* p = (s8*)ptr;
+		kk_ = (ValueKk(*)[SQ_NB][SQ_NB]) (p);
+		kkp_ = (ValueKkp(*)[SQ_NB][SQ_NB][fe_end]) (p + size_of_kk);
+		kpp_ = (ValueKpp(*)[SQ_NB][fe_end][fe_end]) (p + size_of_kk + size_of_kkp);
+	}
+
+	void eval_malloc()
+	{
+		// benchコマンドなどでOptionsを保存して復元するのでこのときEvalDirが変更されたことになって、
+		// 評価関数の再読込の必要があるというフラグを立てるため、この関数は2度呼び出されることがある。
+		if (kk_ != nullptr)
+		{
+			aligned_free((void*)kk_);
+			kk_ = nullptr;
+		}
+
+		// メモリ確保は一回にして、連続性のある確保にする。
+		// このメモリは、プロセス終了のときに自動開放されることを期待している。
+		eval_assign(aligned_malloc(size_of_eval, 32));
+	}
+
 #if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_WIN32)
 	// 評価関数の共有を行うための大掛かりな仕組み
 	// gccでコンパイルするときもWindows環境であれば、これが有効になって欲しいので defined(_WIN32) で判定。
@@ -207,23 +197,12 @@ namespace Eval
 		// 評価関数を共有するのか
 		if (!(bool)Options["EvalShare"])
 		{
-			// このメモリは、プロセス終了のときに自動開放されることを期待している。
-			auto shared_eval_ptr = new SharedEval();
+			eval_malloc();
+			load_eval_impl();
 
-			if (shared_eval_ptr == nullptr)
-			{
-				sync_cout << "info string can't allocate eval memory." << sync_endl;
-			}
-			else
-			{
-				kk_  = &(shared_eval_ptr->kk_ );
-				kkp_ = &(shared_eval_ptr->kkp_);
-				kpp_ = &(shared_eval_ptr->kpp_);
+			// 共有されていないメモリを用いる。
+			sync_cout << "info string use non-shared eval_memory." << sync_endl;
 
-				load_eval_impl();
-				// 共有されていないメモリを用いる。
-				sync_cout << "info string use non-shared eval_memory." << sync_endl;
-			}
 			return;
 		}
 
@@ -252,24 +231,28 @@ namespace Eval
 			auto hMap = CreateFileMapping(INVALID_HANDLE_VALUE,
 				NULL,
 				PAGE_READWRITE, // | /**SEC_COMMIT/**/ /*SEC_RESERVE/**/,
-				0, sizeof(SharedEval),
+				(u32)(size_of_eval>>32), (u32)size_of_eval,
 				mapped_file_name.c_str());
 
 			bool already_exists = (GetLastError() == ERROR_ALREADY_EXISTS);
 
 			// ビュー
-			auto shared_eval_ptr = (SharedEval *)MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedEval));
+			auto shared_eval_ptr = (void *)MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, size_of_eval);
 
 			// メモリが確保できないときはshared_eval_ptr == null。このチェックをしたほうがいいような..。
 			if (shared_eval_ptr == nullptr)
 			{
 				sync_cout << "info string can't allocate shared eval memory." << sync_endl;
+				my_exit();
 			}
 			else
 			{
-				kk_  = &(shared_eval_ptr->kk_ );
-				kkp_ = &(shared_eval_ptr->kkp_);
-				kpp_ = &(shared_eval_ptr->kpp_);
+				// shared_eval_ptrは、32bytesにalignされていると仮定している。
+				// Windows環境ではそうなっているっぽいし、このコードはWindows環境専用なので
+				// とりあえず、良しとする。
+				ASSERT_LV1(((u64)shared_eval_ptr & 0x1f) == 0);
+
+				eval_assign(shared_eval_ptr);
 
 				if (!already_exists)
 				{
@@ -296,6 +279,7 @@ namespace Eval
 		// 1) ::ReleaseMutex()
 		// 2) ::UnmapVieOfFile()
 		// が必要であるが、1),2)がプロセスが解体されるときに自動でなされるので、この処理は特に入れない。
+	}
 
 #else
 
@@ -303,18 +287,18 @@ namespace Eval
 	// load_eval_impl()を呼び出すだけで良い。
 	void load_eval()
 	{
+		eval_malloc();
 		load_eval_impl();
-#endif
 	}
+
+#endif
 
 	// KP,KPP,KKPのスケール
 	const int FV_SCALE = 32;
 
-	// 駒割り以外の全計算
-	// pos.st->BKPP,WKPP,KPPを初期化する。Position::set()で一度だけ呼び出される。(以降は差分計算)
-	// 手番側から見た評価値を返すので注意。(他の評価関数とは設計がこの点において異なる)
-	// なので、この関数の最適化は頑張らない。
-	Value compute_eval(const Position& pos)
+	// 評価関数。全計算。(駒割りは差分)
+	// 返し値は持たず、計算結果としてpos.state()->sumに値を代入する。
+	void compute_eval_impl(const Position& pos)
 	{
 		// is_ready()で評価関数を読み込み、
 		// 初期化してからしかcompute_eval()を呼び出すことは出来ない。
@@ -328,7 +312,8 @@ namespace Eval
 		const auto* ppkppw = kpp[Inv(sq_wk)];
 
 		auto& pos_ = *const_cast<Position*>(&pos);
-
+		auto length = pos_.eval_list()->length();
+		
 #if !defined (USE_EVAL_MAKE_LIST_FUNCTION)
 
 		auto list_fb = pos_.eval_list()->piece_list_fb();
@@ -368,7 +353,7 @@ namespace Eval
 		// KK
 		sum.p[2] = kk[sq_bk][sq_wk];
 
-		for (i = 0; i < PIECE_NO_KING; ++i)
+		for (i = 0; i < length ; ++i)
 		{
 			k0 = list_fb[i];
 			k1 = list_fw[i];
@@ -379,6 +364,7 @@ namespace Eval
 				l0 = list_fb[j];
 				l1 = list_fw[j];
 
+				// KPP
 #if defined(USE_SSE41)
 				// SSEによる実装
 
@@ -393,6 +379,8 @@ namespace Eval
 				sum.p[1] += pkppw[l1];
 #endif
 			}
+
+			// KKP
 			sum.p[2] += kkp[sq_bk][sq_wk][k0];
 		}
 
@@ -400,59 +388,76 @@ namespace Eval
 		sum.p[2][0] += st->materialValue * FV_SCALE;
 
 		st->sum = sum;
-
-		return Value(sum.sum(pos.side_to_move()) / FV_SCALE);
 	}
 
-	// 先手玉が移動したときに先手側の差分
+	// 評価関数。差分計算ではなく全計算する。
+	// Position::set()で一度だけ呼び出される。(以降は差分計算)
+	// 手番側から見た評価値を返すので注意。(他の評価関数とは設計がこの点において異なる)
+	// なので、この関数の最適化は頑張らない。
+	Value compute_eval(const Position& pos)
+	{
+		compute_eval_impl(pos);
+		return Value(pos.state()->sum.sum(pos.side_to_move()) / FV_SCALE);
+	}
+
+	// 後手玉が移動したときの先手玉に対するの差分
 	std::array<s32, 2> do_a_black(const Position& pos, const ExtBonaPiece ebp) {
 		const Square sq_bk = pos.king_square(BLACK);
 		const auto* list0 = pos.eval_list()->piece_list_fb();
+		const int length = pos.eval_list()->length();
 
 		const auto* pkppb = kpp[sq_bk][ebp.fb];
 		std::array<s32, 2> sum = { { pkppb[list0[0]][0], pkppb[list0[0]][1] } };
-		for (int i = 1; i < PIECE_NO_KING; ++i) {
-			sum[0] += pkppb[list0[i]][0];
-			sum[1] += pkppb[list0[i]][1];
-		}
+		for (int i = 1; i < length ; ++i)
+			sum += pkppb[list0[i]];
 		return sum;
 	}
 
-	// 後手玉が移動したときの後手側の差分
+	// 先手玉が移動したときの後手玉に対する差分
 	std::array<s32, 2> do_a_white(const Position& pos, const ExtBonaPiece ebp) {
 		const Square sq_wk = pos.king_square(WHITE);
 		const auto* list1 = pos.eval_list()->piece_list_fw();
+		const int length = pos.eval_list()->length();
 
 		const auto* pkppw = kpp[Inv(sq_wk)][ebp.fw];
 		std::array<s32, 2> sum = { { pkppw[list1[0]][0], pkppw[list1[0]][1] } };
-		for (int i = 1; i < PIECE_NO_KING; ++i) {
-			sum[0] += pkppw[list1[i]][0];
-			sum[1] += pkppw[list1[i]][1];
-		}
+		for (int i = 1; i < length ; ++i)
+			sum += pkppw[list1[i]];
 		return sum;
 	}
 
 	// 玉以外の駒が移動したときの差分
 	EvalSum do_a_pc(const Position& pos, const ExtBonaPiece ebp) {
+		/*
+			 移動した駒がm駒あるなら、これらの駒をeval_list()[]のn-1,n-2,…,n-mに移動させて、
+			 for(i=1..m)
+			   do_a_black(pos,n-i)
+			 みたいなことをすべきだが、mはたかだか2なので、
+			 こうはせずに、引きすぎた重複分(kpp[k][n-1][n-2])をあとで加算している。
+		*/
 		const Square sq_bk = pos.king_square(BLACK);
 		const Square sq_wk = pos.king_square(WHITE);
 		const auto list0 = pos.eval_list()->piece_list_fb();
 		const auto list1 = pos.eval_list()->piece_list_fw();
+		const int length = pos.eval_list()->length();
 
 		EvalSum sum;
 
 		// sum.p[0](BKPP)とsum.p[1](WKPP)をゼロクリア
 #if defined(USE_SSE2)
 		sum.m[0] = _mm_setzero_si128();
-		sum.m[1] = _mm_setzero_si128();
 #else
 		sum.p[0] = { 0, 0 };
 		sum.p[1] = { 0, 0 };
 #endif
+		// KK
 		sum.p[2] = kkp[sq_bk][sq_wk][ebp.fb];
 
 		const auto* pkppb = kpp[sq_bk     ][ebp.fb];
 		const auto* pkppw = kpp[Inv(sq_wk)][ebp.fw];
+
+		// ここ、AVX512なら、_mm512_i32gather_epi32()が使える。
+		// 気が向いたらコード書く。
 
 #if defined (USE_AVX2)
 		
@@ -460,7 +465,8 @@ namespace Eval
 		__m256i sum0 = zero;
 		__m256i sum1 = zero;
 		int i = 0;
-		for (; i + 8 < PIECE_NO_KING; i += 8) {
+		for (; i + 8 < length ; i += 8)
+		{
 			__m256i indexes0 = _mm256_load_si256(reinterpret_cast<const __m256i*>(&list0[i]));
 			__m256i indexes1 = _mm256_load_si256(reinterpret_cast<const __m256i*>(&list1[i]));
 			__m256i w0 = _mm256_i32gather_epi32(reinterpret_cast<const int*>(pkppb), indexes0, 4);
@@ -477,7 +483,8 @@ namespace Eval
 			sum1 = _mm256_add_epi32(sum1, w1hi);
 		}
 
-		for (; i + 4 < PIECE_NO_KING; i += 4) {
+		if ( i + 4 < length)
+		{
 			__m128i indexes0 = _mm_load_si128(reinterpret_cast<const __m128i*>(&list0[i]));
 			__m128i indexes1 = _mm_load_si128(reinterpret_cast<const __m128i*>(&list1[i]));
 			__m128i w0 = _mm_i32gather_epi32(reinterpret_cast<const int*>(pkppb), indexes0, 4);
@@ -488,9 +495,12 @@ namespace Eval
 
 			__m256i w1lo = _mm256_cvtepi16_epi32(w1);
 			sum1 = _mm256_add_epi32(sum1, w1lo);
+
+			i += 4;
 		}
 
-		for (; i < PIECE_NO_KING; ++i) {
+		for (; i < length ; ++i)
+		{
 			sum.p[0] += pkppb[list0[i]];
 			sum.p[1] += pkppw[list1[i]];
 		}
@@ -517,18 +527,16 @@ namespace Eval
 
 		sum.m[0] = _mm_set_epi32(0, 0, *reinterpret_cast<const s32*>(&pkppw[list1[0]][0]), *reinterpret_cast<const s32*>(&pkppb[list0[0]][0]));
 		sum.m[0] = _mm_cvtepi16_epi32(sum.m[0]);
-		for (int i = 1; i < PIECE_NO_KING; ++i) {
+		for (int i = 1; i < length ; ++i) {
 			__m128i tmp;
 			tmp = _mm_set_epi32(0, 0, *reinterpret_cast<const s32*>(&pkppw[list1[i]][0]), *reinterpret_cast<const s32*>(&pkppb[list0[i]][0]));
 			tmp = _mm_cvtepi16_epi32(tmp);
 			sum.m[0] = _mm_add_epi32(sum.m[0], tmp);
 		}
 #else
-		sum.p[0][0] = pkppb[list0[0]][0];
-		sum.p[0][1] = pkppb[list0[0]][1];
-		sum.p[1][0] = pkppw[list1[0]][0];
-		sum.p[1][1] = pkppw[list1[0]][1];
-		for (int i = 1; i < PIECE_NO_KING; ++i) {
+		sum.p[0] = { pkppb[list0[0]][0] , pkppb[list0[0]][1] };
+		sum.p[1] = { pkppw[list1[0]][0] , pkppw[list1[0]][1] };
+		for (int i = 1; i < length ; ++i) {
 			sum.p[0] += pkppb[list0[i]];
 			sum.p[1] += pkppw[list1[i]];
 		}
@@ -570,7 +578,7 @@ namespace Eval
 			!prev->sum.evaluated())
 		{
 			// 全計算
-			compute_eval(pos);
+			compute_eval_impl(pos);
 
 			return;
 			// 結果は、pos->state().sumから取り出すべし。
@@ -587,11 +595,12 @@ namespace Eval
 
 		auto list0 = pos.eval_list()->piece_list_fb();
 		auto list1 = pos.eval_list()->piece_list_fw();
+		const int length = pos.eval_list()->length();
 
 		auto dirty = dp.pieceNo[0];
 
 		// 移動させた駒は王か？
-		if (dirty >= PIECE_NO_KING)
+		if (dirty >= PIECE_NUMBER_KING)
 		{
 			// 前のnodeの評価値からの増分を計算していく。
 			// (直接この変数に加算していく)
@@ -606,20 +615,23 @@ namespace Eval
 			diff.p[2][0] += now->materialValue * FV_SCALE;
 
 			// 後手玉の移動(片側分のKPPを丸ごと求める)
-			if (dirty == PIECE_NO_WKING)
+			if (dirty == PIECE_NUMBER_WKING)
 			{
 				const auto ppkppw = kpp[Inv(sq_wk)];
 
-				// ΣWKPP = 0
-				diff.p[1][0] = 0;
-				diff.p[1][1] = 0;
+				// ΣWKPP
+				diff.p[1] = { 0 , 0 };
 
 #if defined(USE_AVX2)
 				
 				__m256i zero = _mm256_setzero_si256();
 				__m256i diffp1 = zero;
-				for (int i = 0; i < PIECE_NO_KING; ++i)
+				for (int i = 0; i < length ; ++i)
 				{
+					// KKPの値は、後手側から見た計算だとややこしいので、先手から見た計算でやる。
+					// 後手から見た場合、kkp[inv(sq_wk)][inv(sq_bk)][k1]になるが、これ次元下げで同じ値を書いているとは限らない。
+					diff.p[2] += kkp[sq_bk][sq_wk][list0[i]];
+
 					const int k1 = list1[i];
 					const auto* pkppw = ppkppw[k1];
 					int j = 0;
@@ -637,7 +649,7 @@ namespace Eval
 						__m256i whi = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(w, 1));
 						// diffp1に足し合わせる
 						diffp1 = _mm256_add_epi32(diffp1, whi);
-			}
+					}
 
 					for (; j + 4 < i; j += 4) {
 						// list1[j]から4要素ロードする
@@ -655,14 +667,7 @@ namespace Eval
 						const int l1 = list1[j];
 						diff.p[1] += pkppw[l1];
 					}
-
-					// KKPのWK分。BKは移動していないから、BK側には影響ない。
-
-					// 後手から見たKKP。後手から見ているのでマイナス
-					diff.p[2][0] -= kkp[Inv(sq_wk)][Inv(sq_bk)][k1][0];
-					// 後手から見たKKP手番。後手から見るのでマイナスだが、手番は先手から見たスコアを格納するのでさらにマイナスになって、プラス。
-					diff.p[2][1] += kkp[Inv(sq_wk)][Inv(sq_bk)][k1][1];
-		}
+				}
 
 				// diffp1とdiffp1の上位128ビットと下位128ビットを独立して8バイトシフトしたものを足し合わせる
 				diffp1 = _mm256_add_epi32(diffp1, _mm256_srli_si256(diffp1, 8));
@@ -674,8 +679,10 @@ namespace Eval
 				diff.p[1] += diffp1_sum;
 #else
 
-				for (int i = 0; i < PIECE_NO_KING; ++i)
+				for (int i = 0; i < length ; ++i)
 				{
+					diff.p[2] += kkp[sq_bk][sq_wk][list0[i]];
+
 					const int k1 = list1[i];
 					const auto* pkppw = ppkppw[k1];
 					for (int j = 0; j < i; ++j)
@@ -683,13 +690,6 @@ namespace Eval
 						const int l1 = list1[j];
 						diff.p[1] += pkppw[l1];
 					}
-
-					// KKPのWK分。BKは移動していないから、BK側には影響ない。
-
-					// 後手から見たKKP。後手から見ているのでマイナス
-					diff.p[2][0] -= kkp[Inv(sq_wk)][Inv(sq_bk)][k1][0];
-					// 後手から見たKKP手番。後手から見るのでマイナスだが、手番は先手から見たスコアを格納するのでさらにマイナスになって、プラス。
-					diff.p[2][1] += kkp[Inv(sq_wk)][Inv(sq_bk)][k1][1];
 				}
 #endif
 
@@ -712,17 +712,22 @@ namespace Eval
 				// さきほどの処理と同様。
 
 				const auto* ppkppb = kpp[sq_bk];
-				diff.p[0][0] = 0;
-				diff.p[0][1] = 0;
+				// ΣBKPP
+				diff.p[0] = { 0,0 };
 
 #if defined(USE_AVX2)
 
 				__m256i zero = _mm256_setzero_si256();
 				__m256i diffp0 = zero;
-				for (int i = 0; i < PIECE_NO_KING; ++i)
+
+				for (int i = 0; i < length; ++i)
 				{
 					const int k0 = list0[i];
 					const auto* pkppb = ppkppb[k0];
+
+					// KKP
+					diff.p[2] += kkp[sq_bk][sq_wk][k0];
+
 					int j = 0;
 					for (; j + 8 < i; j += 8)
 					{
@@ -738,7 +743,7 @@ namespace Eval
 						__m256i whi = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(w, 1));
 						// diffp0に足し合わせる
 						diffp0 = _mm256_add_epi32(diffp0, whi);
-		  }
+					}
 
 					for (; j + 4 < i; j += 4) {
 						// list0[j]から4要素ロードする
@@ -756,9 +761,7 @@ namespace Eval
 						const int l0 = list0[j];
 						diff.p[0] += pkppb[l0];
 					}
-
-					diff.p[2] += kkp[sq_bk][sq_wk][k0];
-		}
+				}
 
 				// diffp0とdiffp0の上位128ビットと下位128ビットを独立して8バイトシフトしたものを足し合わせる
 				diffp0 = _mm256_add_epi32(diffp0, _mm256_srli_si256(diffp0, 8));
@@ -769,7 +772,7 @@ namespace Eval
 				_mm_storel_epi64(reinterpret_cast<__m128i*>(&diffp0_sum), diffp0_128);
 				diff.p[0] += diffp0_sum;
 #else
-				for (int i = 0; i < PIECE_NO_KING; ++i)
+				for (int i = 0; i < length ; ++i)
 				{
 					const int k0 = list0[i];
 					const auto* pkppb = ppkppb[k0];
@@ -816,10 +819,10 @@ namespace Eval
 				auto sq_wk = pos.king_square(WHITE);
 
 				diff += do_a_pc(pos, dp.changed_piece[1].new_piece);
-				diff.p[0] -= kpp[sq_bk][dp.changed_piece[0].new_piece.fb][dp.changed_piece[1].new_piece.fb];
+				diff.p[0] -= kpp[    sq_bk ][dp.changed_piece[0].new_piece.fb][dp.changed_piece[1].new_piece.fb];
 				diff.p[1] -= kpp[Inv(sq_wk)][dp.changed_piece[0].new_piece.fw][dp.changed_piece[1].new_piece.fw];
 
-				const PieceNo listIndex_cap = dp.pieceNo[1];
+				const PieceNumber listIndex_cap = dp.pieceNo[1];
 				list0[listIndex_cap] = dp.changed_piece[1].old_piece.fb;
 				list1[listIndex_cap] = dp.changed_piece[1].old_piece.fw;
 
@@ -828,7 +831,7 @@ namespace Eval
 				diff -= do_a_pc(pos, dp.changed_piece[0].old_piece);
 				diff -= do_a_pc(pos, dp.changed_piece[1].old_piece);
 
-				diff.p[0] += kpp[sq_bk][dp.changed_piece[0].old_piece.fb][dp.changed_piece[1].old_piece.fb];
+				diff.p[0] += kpp[    sq_bk ][dp.changed_piece[0].old_piece.fb][dp.changed_piece[1].old_piece.fb];
 				diff.p[1] += kpp[Inv(sq_wk)][dp.changed_piece[0].old_piece.fw][dp.changed_piece[1].old_piece.fw];
 				list0[listIndex_cap] = dp.changed_piece[1].new_piece.fb;
 				list1[listIndex_cap] = dp.changed_piece[1].new_piece.fw;
@@ -846,9 +849,9 @@ namespace Eval
 	}
 #else
 	// EvalListの組み換えを行なうときは差分計算をせずに(実装するのが大変なため)、毎回全計算を行なう。
-	Value evaluateBody(const Position& pos)
+	void evaluateBody(const Position& pos)
 	{
-		return compute_eval(pos);
+		compute_eval_impl(pos);
 	}
 #endif // USE_EVAL_MAKE_LIST_FUNCTION
 
@@ -861,6 +864,7 @@ namespace Eval
 		// すでに計算済(Null Moveなどで)であるなら、それを返す。
 		if (sum.evaluated())
 			return Value(sum.sum(pos.side_to_move()) / FV_SCALE);
+		// ここで未初期化な値が返っているなら、それはPosition::do_move()のところでVALUE_NOT_EVALUATEDを代入していないからだ。
 
 #if defined(USE_GLOBAL_OPTIONS)
 		// GlobalOptionsでeval hashを用いない設定になっているなら
@@ -907,7 +911,7 @@ namespace Eval
 		ASSERT_LV5(pos.state()->materialValue == Eval::material(pos));
 		// 差分計算と非差分計算との計算結果が合致するかのテスト。(さすがに重いのでコメントアウトしておく)
 		// ASSERT_LV5(Value(st->sum.sum(pos.side_to_move()) / FV_SCALE) == compute_eval(pos));
-
+		
 #if 0
 		if (!(Value(st->sum.sum(pos.side_to_move()) / FV_SCALE) == compute_eval(pos)))
 		{
@@ -916,7 +920,17 @@ namespace Eval
 		}
 #endif
 
-		return Value(sum.sum(pos.side_to_move()) / FV_SCALE);
+		auto v = Value(sum.sum(pos.side_to_move()) / FV_SCALE);
+
+		// 返す値の絶対値がVALUE_MAX_EVALを超えてないことを保証しないといけないのだが…。
+		// いまの評価関数、手番を過学習したりして、ときどき超えてそう…。
+		//ASSERT_LV3(abs(v) < VALUE_MAX_EVAL);
+#if 0
+		if (!((abs(v) < VALUE_MAX_EVAL)))
+			std::cout << pos << std::endl;
+#endif
+
+		return v;
 	}
 
 	void evaluate_with_no_return(const Position& pos)
@@ -934,6 +948,83 @@ namespace Eval
 #endif
 	}
 
+#if defined(EVAL_LEARN)
+	// KKのKの値を出力する実験的コード
+	void kk_stat()
+	{
+		EvalLearningTools::init();
+
+		auto for_all_sq = [](std::function<void(Square)> func) {
+			for (int r = RANK_1; r <= RANK_9; ++r)
+			{
+				for (int f = FILE_1; f <= FILE_9; ++f)
+				{
+					auto sq = (File)f | (Rank)r;
+					func(sq);
+				}
+				cout << endl;
+			}
+			cout << endl;
+		};
+
+		// 先手から。
+		cout << "BK = " << endl;
+		for_all_sq([](Square sq) {
+			array<float, 2> sum_kk = { 0,0 };
+			array<float, 2> sum_kkp = { 0,0 };
+			array<float, 2> sum_kpp = { 0,0 };
+			for (auto sq2 = 0; sq2 < SQ_NB; ++sq2)
+			{
+				sum_kk += kk[sq][sq2];
+				for (auto p = 0; p < fe_end; ++p)
+					sum_kkp += kkp[sq][sq2][p];
+			}
+			for (auto p1 = 0; p1 < fe_end; ++p1)
+				for (auto p2 = 0; p2 < fe_end; ++p2)
+					sum_kpp += kpp[sq][p1][p2];
+
+			for (int i = 0; i < 2; ++i)
+			{
+				sum_kk[i] /= SQ_NB;
+				sum_kkp[i] = 38 * sum_kkp[i] / (fe_end * (int)SQ_NB);
+				sum_kpp[i] = (38 * 37 / 2) * sum_kpp[i] / (fe_end * (int)fe_end);
+			}
+			cout << "{" << (int)sum_kk[0] << ":" << (int)sum_kkp[0] << ":" << (int)sum_kpp[0] << ","
+						<< (int)sum_kk[1] << ":" << (int)sum_kkp[1] << ":" << (int)sum_kpp[1] << "} ";
+		});
+
+		// 後手から。
+		cout << "WK = " << endl;
+		for_all_sq([](Square sq) {
+			array<float, 2> sum_kk = { 0,0 };
+			array<float, 2> sum_kkp = { 0,0 };
+			array<float, 2> sum_kpp = { 0,0 };
+			for (Square sq2 = SQ_ZERO; sq2 < SQ_NB; ++sq2)
+			{
+				sum_kk += kk[sq2][sq];
+				for (BonaPiece p = BONA_PIECE_ZERO; p < fe_end; ++p)
+					sum_kkp += kkp[sq2][sq][p];
+			}
+			for (BonaPiece p1 = BONA_PIECE_ZERO; p1 < fe_end; ++p1)
+				for (BonaPiece p2 = BONA_PIECE_ZERO; p2 < fe_end; ++p2)
+				{
+					// kpp、invしたときも、手番は先手から見た値なので符号逆にしない
+					sum_kpp[0] -= kpp[Inv(sq)][inv_piece(p1)][inv_piece(p2)][0];
+					sum_kpp[1] += kpp[Inv(sq)][inv_piece(p1)][inv_piece(p2)][1];
+				}
+
+			for (int i = 0; i < 2; ++i)
+			{
+				sum_kk[i] /= SQ_NB;
+				sum_kkp[i] = 38 * sum_kkp[i] / (fe_end * (int)SQ_NB);
+				sum_kpp[i] = (38 * 37 / 2) * sum_kpp[i] / (fe_end * (int)fe_end);
+			}
+			cout << "{" << (int)sum_kk[0] << ":" << (int)sum_kkp[0] << ":" << (int)sum_kpp[0] << ","
+				        << (int)sum_kk[1] << ":" << (int)sum_kkp[1] << ":" << (int)sum_kpp[1] << "} ";
+		});
+	}
+#endif
+
 	// 現在の局面の評価値の内訳を表示する。
 	void print_eval_stat(Position& pos)
 	{
@@ -946,14 +1037,54 @@ namespace Eval
 
 		auto& pos_ = *const_cast<Position*>(&pos);
 
+#if !defined (USE_EVAL_MAKE_LIST_FUNCTION)
+
 		auto list_fb = pos_.eval_list()->piece_list_fb();
 		auto list_fw = pos_.eval_list()->piece_list_fw();
+
+#else
+		// -----------------------------------
+		// USE_EVAL_MAKE_LIST_FUNCTIONが定義されているときは
+		// ここでeval_listをコピーして、組み替える。
+		// -----------------------------------
+
+		// バッファを確保してコピー
+		BonaPiece list_fb[40];
+		BonaPiece list_fw[40];
+		memcpy(list_fb, pos_.eval_list()->piece_list_fb(), sizeof(BonaPiece) * 40);
+		memcpy(list_fw, pos_.eval_list()->piece_list_fw(), sizeof(BonaPiece) * 40);
+
+		// ユーザーは、この関数でBonaPiece番号の自由な組み換えを行なうものとする。
+		make_list_function(pos, list_fb, list_fw);
+
+		EvalLearningTools::init();
+		for (PieceNumber i = PIECE_NUMBER_ZERO; i < PIECE_NUMBER_NB; ++i)
+		{
+			// 組み替えて異なる番号になったものだけ出力。
+			auto fb = pos_.eval_list()->piece_list_fb()[i];
+			auto fw = pos_.eval_list()->piece_list_fw()[i];
+			auto fb_new = list_fb[i];
+			auto fw_new = list_fw[i];
+			
+			// この変換後のfb,fwに対して、きちんと情報が設定されているかの確認。
+			if (fb != fb_new || fw != fw_new)
+				std::cout << "PieceNumber = " << i << " , fb = " << (int)fb << ":" << fb << " , fw = " << (int)fw << ":" << fw
+				<< " , fb_new = " << (int)fb_new << " , fw_new = " << (int)fw_new
+				<< " , mir(fb_new) = " << (int)EvalLearningTools::mir_piece(fb_new)
+				<< " , mir(fw_new) = " << (int)EvalLearningTools::mir_piece(fw_new)
+				<< " , inv(fb_new) = " << (int)EvalLearningTools::inv_piece(fb_new)
+				<< " , inv(fw_new) = " << (int)EvalLearningTools::inv_piece(fw_new)
+				<< std::endl;
+		}
+#endif
 
 		int i, j;
 		BonaPiece k0, k1, l0, l1;
 
+		const int length = pos_.eval_list()->length();
+
 		// 38枚の駒を表示
-		for (i = 0; i < PIECE_NO_KING; ++i)
+		for (i = 0; i < length ; ++i)
 			cout << int(list_fb[i]) << " = " << list_fb[i] << " , " << int(list_fw[i]) << " =  " << list_fw[i] << endl;
 
 		// 評価値の合計
@@ -968,9 +1099,9 @@ namespace Eval
 
 		// KK
 		sum.p[2] = kk[sq_bk][sq_wk];
-		cout << "KKC : " << sq_bk << " " << sq_wk << " = " << kk[sq_bk][sq_wk][0] << " + " << kk[sq_bk][sq_wk][1] << "\n";
+		cout << "KKC : " << sq_bk << " " << sq_wk << " = " << kk[sq_bk][sq_wk][0] << " + " << kk[sq_bk][sq_wk][1] << endl;
 
-		for (i = 0; i < PIECE_NO_KING; ++i)
+		for (i = 0; i < length ; ++i)
 		{
 			k0 = list_fb[i];
 			k1 = list_fw[i];
@@ -991,8 +1122,8 @@ namespace Eval
 				tmp = _mm_cvtepi16_epi32(tmp);
 				sum.m[0] = _mm_add_epi32(sum.m[0], tmp);
 
-				cout << "BKPP : " << sq_bk << " " << k0 << " " << l0 << " = " << pkppb[l0][0] << " + " << pkppb[l0][1] << "\n";
-				cout << "WKPP : " << sq_wk << " " << k1 << " " << l1 << " = " << pkppw[l1][0] << " + " << pkppw[l1][1] << "\n";
+				cout << "BKPP : " << sq_bk << " " << k0 << " " << l0 << " = " << pkppb[l0][0] << " + " << pkppb[l0][1] << endl;
+				cout << "WKPP : " << sq_wk << " " << k1 << " " << l1 << " = " << pkppw[l1][0] << " + " << pkppw[l1][1] << endl;
 
 #else
 				sum.p[0] += pkppb[l0];
@@ -1001,15 +1132,111 @@ namespace Eval
 			}
 			sum.p[2] += kkp[sq_bk][sq_wk][k0];
 
-			cout << "KKP : " << sq_bk << " " << sq_wk << " " << k0 << " = " << kkp[sq_bk][sq_wk][k0][0] << " + " << kkp[sq_bk][sq_wk][k0][1] << "\n";
+			cout << "KKP : " << sq_bk << " " << sq_wk << " " << k0 << " = " << kkp[sq_bk][sq_wk][k0][0] << " + " << kkp[sq_bk][sq_wk][k0][1] << endl;
 
 		}
 
 		cout << "Material = " << pos.state()->materialValue << endl;
 		cout << sum;
-		cout << "---\n";
+		cout << "---" << endl;
+
+		// KKのKの値を出力する実験的コード
+//		kk_stat();
 
 	}
+
+	// とりあえずここに書いておく。あとで移動させるかも。
+#if defined(EVAL_LEARN)
+
+	// regularize_kk()の下請け
+	void regularize_kk_impl()
+	{
+		EvalLearningTools::init();
+
+		typedef array<float, 2> kkt;
+
+		array<kkt, SQ_NB> kk_offset , kkp_offset , kpp_offset;
+
+		kkt zero = { 0, 0 };
+		kk_offset.fill(zero);
+		kkp_offset.fill(zero);
+		kpp_offset.fill(zero);
+
+		for (Square sq = SQ_ZERO; sq < SQ_NB; ++sq)
+		{
+			// sq2,p1,p2に依存しないkkの値を求める
+			kkt sum_kkp = zero;
+			kkt sum_kpp = zero;
+
+			for (Square sq2 = SQ_ZERO; sq2 < SQ_NB; ++sq2)
+			{
+				for (BonaPiece p = BONA_PIECE_ZERO; p < fe_end; ++p)
+				{
+					sum_kkp += kkp[sq][sq2][p];
+
+					//sum_kkp[0] -= kkp[Inv(sq2)][Inv(sq)][EvalLearningTools::inv_piece(p)][0];
+					//sum_kkp[1] += kkp[Inv(sq2)][Inv(sq)][EvalLearningTools::inv_piece(p)][1];
+				}
+			}
+			for (auto p1 = 0; p1 < fe_end; ++p1)
+				for (auto p2 = 0; p2 < fe_end; ++p2)
+					sum_kpp += kpp[sq][p1][p2];
+
+			for (int i = 0; i < 2; ++i)
+			{
+				// kkpとkppの平均を求める。この分をあとでそれぞれの要素から引く。
+				kkp_offset[sq][i] = sum_kkp[i] / (fe_end * (int)SQ_NB);
+				kpp_offset[sq][i] = sum_kpp[i] / (fe_end * (int)fe_end);
+
+				// kkpの計算のときにこれが38枚分、重なってくる
+				// kppの計算のときにこれが38*37/2枚分、重なってくる
+				kk_offset[sq][i] = 38 * kkp_offset[sq][i] + (38 * 37 / 2) * kpp_offset[sq][i];
+			}
+		}
+
+		// offsetの計算が終わったので先後にこれを適用してやる。
+		for (Square sq = SQ_ZERO; sq < SQ_NB; ++sq)
+		{
+			for (Square sq2 = SQ_ZERO; sq2 < SQ_NB; ++sq2)
+			{
+				kk[sq][sq2] += kk_offset[sq];
+
+				// ここむっちゃ計算ややこしいが、これで合っとる。
+				kk[Inv(sq2)][Inv(sq)][0] -= (int)kk_offset[sq][0];
+				kk[Inv(sq2)][Inv(sq)][1] += (int)kk_offset[sq][1];
+
+				for (auto p = 0; p < fe_end; ++p)
+				{
+					// ゼロの要素は書き換えない。(本来値がつくべきでないところを破壊すると困るため)
+					if (kkp[sq][sq2][p][0])
+					{
+						kkp[sq][sq2][p] -= kkp_offset[sq];
+
+						kkp[Inv(sq2)][Inv(sq)][inv_piece(BonaPiece(p))][0] += (int)kkp_offset[sq][0];
+						kkp[Inv(sq2)][Inv(sq)][inv_piece(BonaPiece(p))][1] -= (int)kkp_offset[sq][1];
+					}
+				}
+			}
+
+			for (auto p1 = 0; p1 < fe_end; ++p1)
+				for (auto p2 = 0; p2 < fe_end; ++p2)
+					// ゼロの要素は書き換えない　またp1==0とかp2==0とかp1==p2のところは0になっているべき。
+					if (kpp[sq][p1][p2][0] && p1!=p2 && p1 && p2)
+						kpp[sq][p1][p2] -= kpp_offset[sq];
+		}
+
+	}
+
+	// KKを正規化する関数。元の評価関数と完全に等価にはならないので注意。
+	// kkp,kppの値をなるべくゼロに近づけることで、学習中に出現しなかった特徴因子の値(ゼロになっている)が
+	// 妥当であることを保証しようという考え。
+	void regularize_kk()
+	{
+		kk_stat();
+		regularize_kk_impl();
+		kk_stat();
+	}
+#endif
 
 	// 評価関数のそれぞれのパラメーターに対して関数fを適用してくれるoperator。
 	// パラメーターの分析などに用いる。
@@ -1043,7 +1270,7 @@ namespace Eval
 		{
 			for (u64 i = 0; i < (u64)SQ_NB * (u64)fe_end * (u64)fe_end; ++i)
 			{
-				auto v = ((ValueKpp*)kkp)[i];
+				auto v = ((ValueKpp*)kpp)[i];
 				f(v[0], v[1]);
 			}
 		}

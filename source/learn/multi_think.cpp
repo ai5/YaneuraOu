@@ -1,11 +1,10 @@
 ﻿#include "../shogi.h"
 
-#if defined(EVAL_LEARN) && defined(YANEURAOU_2017_EARLY_ENGINE)
+#if defined(EVAL_LEARN) && \
+	(defined(YANEURAOU_2017_EARLY_ENGINE) || defined(YANEURAOU_2017_GOKU_ENGINE))
 
 #include "multi_think.h"
 #include "../tt.h"
-
-extern void is_ready();
 
 void MultiThink::go_think()
 {
@@ -33,7 +32,9 @@ void MultiThink::go_think()
 	Options["BookOnTheFly"] = "false";
 
 	// 評価関数の読み込み等
-	is_ready();
+	// learnコマンドの場合、評価関数読み込み後に評価関数の値を補正している可能性があるので、
+	// メモリの破損チェックは省略する。
+	is_ready(true);
 
 	// ループ上限はset_loop_max()で設定されているものとする。
 	loop_count = 0;
@@ -112,7 +113,9 @@ void MultiThink::go_think()
 	for (auto& th : threads)
 		th.join();
 
-	std::cout << "..all works..done!!" << std::endl;
+	// 全スレッドが終了しただけでfileの書き出しスレッドなどはまだ動いていて
+	// 作業自体は完了していない可能性があるのでスレッドがすべて終了したことだけ出力する。
+	std::cout << "all threads are joined." << std::endl;
 
 	// Optionsを書き換えたので復元。
 	// 値を代入しないとハンドラが起動しないのでこうやって復元する。

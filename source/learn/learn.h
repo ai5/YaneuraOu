@@ -16,10 +16,6 @@
 // 標準の雑巾絞りにするためにはlearnコマンドで "lambda 1"を指定してやれば良い。
 #define LEARN_ELMO_METHOD
 
-// やねうら王2017GOKU用のデフォルトの学習設定
-// ※　このオプションは実験中なので使わないように。
-// #define LEARN_YANEURAOU_2017_GOKU
-
 
 // ----------------------
 //        更新式
@@ -122,15 +118,50 @@ typedef float LearnFloatType;
 //#include "half_float.h"
 //typedef HalfFloat::float16 LearnFloatType;
 
+// ----------------------
+
+// Vの小数部を保持する変数のbit数
+//  8-bitsだと少し心もとない。
+// 16-bitsで十分だと思われる。
+
+//#define V_FRACTION_BITS 8
+#define V_FRACTION_BITS 16
+//#define V_FRACTION_BITS 32
+//#define V_FRACTION_BITS 64
 
 // ----------------------
 //  省メモリ化
 // ----------------------
 
 // Weight配列(のうちのKPP)に三角配列を用いて省メモリ化する。
-// これを用いると、学習用の重み配列は評価関数ファイルの2.5倍程度で済むようになる。
+// これを用いると、学習用の重み配列は評価関数ファイルの3倍程度で済むようになる。
 
 #define USE_TRIANGLE_WEIGHT_ARRAY
+
+// ----------------------
+//  次元下げ
+// ----------------------
+
+// ミラー(左右対称性)、インバース(先後対称性)に関して次元下げを行なう。
+// デフォルトではすべてオン。
+
+// KKに対してミラー、インバースを利用した次元下げを行なう。(効果のほどは不明)
+// USE_KK_INVERSE_WRITEをオンにするときはUSE_KK_MIRROR_WRITEもオンでなければならない。
+#define USE_KK_MIRROR_WRITE
+#define USE_KK_INVERSE_WRITE
+
+// KKPに対してミラー、インバースを利用した次元下げを行なう。(インバースのほうは効果のほどは不明)
+// USE_KKP_INVERSE_WRITEをオンにするときは、USE_KKP_MIRROR_WRITEもオンになっていなければならない。
+#define USE_KKP_MIRROR_WRITE
+#define USE_KKP_INVERSE_WRITE
+
+// KPPに対してミラーを利用した次元下げを行なう。(これをオフにすると教師局面が倍ぐらい必要になる)
+// KPPにはインバースはない。(先手側のKしかないので)
+#define USE_KPP_MIRROR_WRITE
+
+// KPPPに対してミラーを利用した次元下げを行なう。(これをオフにすると教師局面が倍ぐらい必要になる)
+// KPPPにもインバースはない。(先手側のKしかないので)
+#define USE_KPPP_MIRROR_WRITE
 
 
 // ======================
@@ -159,23 +190,6 @@ typedef float LearnFloatType;
 #define ADA_GRAD_UPDATE
 #endif
 
-// ----------------------
-//  やねうら王2017GOKUの方法
-// ----------------------
-
-#if defined(LEARN_YANEURAOU_2017_GOKU)
-
-// 損失関数、比較実験中。
-//#define LOSS_FUNCTION_IS_CROSS_ENTOROPY
-//#define LOSS_FUNCTION_IS_WINNING_PERCENTAGE
-#define LOSS_FUNCTION_IS_ELMO_METHOD
-//#define LOSS_FUNCTION_IS_YANE_ELMO_METHOD
-
-#define ADA_GRAD_UPDATE
-//#define SGD_UPDATE
-//#define ADA_PROP_UPDATE
-#endif
-
 
 // ----------------------
 // Learnerで用いるstructの定義
@@ -196,6 +210,7 @@ namespace Learner
 		s16 score;
 
 		// PVの初手
+		// 教師との指し手一致率を求めるときなどに用いる
 		u16 move;
 
 		// 初期局面からの局面の手数。

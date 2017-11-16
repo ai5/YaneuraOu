@@ -3,8 +3,6 @@
 
 # added by yaneurao
 
-evaluate_experimental.*
-evaluate_ppap.h
 *.gitattributes
 # *.gitignore
 *.bat
@@ -14,9 +12,19 @@ YaneuraOu_backup*.lnk
 実験記録*.txt
 開発メモ2017.txt
 コマンドのメモ.txt
+計測資料.txt
 *.bak
 *Private.*
 *.vspx
+
+# experimental
+
+evaluate_experimental.*
+evaluate_ppap*
+evaluate_nabla*
+evaluate_akashic*
+evaluate_helices*
+2017-goku-engine/
 
 # cf. https://twitter.com/496_/status/673758920846917632
 YaneuraOu.VC.opendb

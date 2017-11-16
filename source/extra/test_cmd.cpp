@@ -15,10 +15,6 @@
 using namespace EvalLearningTools;
 #endif
 
-// 評価関数ファイルを読み込む。
-// 局面の初期化は行わないので必要ならばPosition::set()などで初期化すること。
-extern void is_ready();
-
 // ----------------------------------
 //  USI拡張コマンド "perft"(パフォーマンステスト)
 // ----------------------------------
@@ -246,12 +242,14 @@ void random_player(Position& pos,uint64_t loop_max)
 	uint64_t mate_missed = 0;   // 1手詰め判定で見逃した1手詰め局面の数
 #endif
 
-	pos.set_hirate(Threads.main());
 	const int MAX_PLY = 256; // 256手までテスト
 
 	StateInfo state[MAX_PLY]; // StateInfoを最大手数分だけ
 	Move moves[MAX_PLY]; // 局面の巻き戻し用に指し手を記憶
 	int ply; // 初期局面からの手数
+
+	StateInfo si;
+	pos.set_hirate(&si,Threads.main());
 
 	PRNG prng(20160101);
 
@@ -404,7 +402,8 @@ void random_player_bench_cmd(Position& pos, istringstream& is)
 	is >> loop_max;
 	cout << "Random Player bench test , loop_max = " << loop_max << endl;
 
-	pos.set_hirate(Threads.main());
+	StateInfo si;
+	pos.set_hirate(&si,Threads.main());
 	const int MAX_PLY = 256; // 256手までテスト
 
 	StateInfo state[MAX_PLY]; // StateInfoを最大手数分だけ
@@ -679,10 +678,9 @@ void test_read_record(Position& pos, istringstream& is)
 			while (ss >> token && token != "moves")
 				sfen += token;
 
-		auto& SetupStates = Search::SetupStates;
-		SetupStates = Search::StateStackPtr(new aligned_stack<StateInfo>());
+		auto states = StateListPtr(new StateList(1));
 
-		pos.set(sfen , Threads.main());
+		pos.set(sfen , &states->back() , Threads.main());
 
 		while (ss >> token)
 		{
@@ -690,8 +688,8 @@ void test_read_record(Position& pos, istringstream& is)
 			{
 				if (token == to_usi_string(m))
 				{
-					SetupStates->push(StateInfo());
-					pos.do_move(m, SetupStates->top());
+					states->emplace_back();
+					pos.do_move(m, states->back());
 					goto Ok;
 				}
 			}
@@ -733,7 +731,9 @@ void auto_play(Position& pos, istringstream& is)
 
 	for (uint64_t i = 0; i < loop_max; ++i)
 	{
-		pos.set_hirate(Threads.main());
+		auto states = StateListPtr(new StateList(1));
+		pos.set_hirate(&states->back(),Threads.main());
+
 		for (ply = 0; ply < MAX_PLY; ++ply)
 		{
 			MoveList<LEGAL_ALL> mg(pos);
@@ -741,14 +741,15 @@ void auto_play(Position& pos, istringstream& is)
 				break;
 
 			Time.reset();
-			Threads.start_thinking(pos, Search::SetupStates , lm);
+			Threads.start_thinking(pos, states , lm);
 			Threads.main()->wait_for_search_finished();
 			auto rootMoves = Threads.main()->rootMoves;
 			if (rootMoves.size() == 0)
 				break;
 			Move m = rootMoves.at(0).pv[0]; // 1番目に並び変わっているはず。
 
-			pos.do_move(m, state[ply]);
+			states->emplace_back();
+			pos.do_move(m, states->back());
 			moves[ply] = m;
 		}
 		// 1局ごとに'.'を出力(進んでいることがわかるように)
@@ -766,8 +767,8 @@ void test_timeman()
 	{
 //		Options["NetworkDelay2"] = "1200";
 
-		int delay = Options["NetworkDelay"];
-		int delay2 = Options["NetworkDelay2"];
+		int delay = (int)Options["NetworkDelay"];
+		int delay2 = (int)Options["NetworkDelay2"];
 
 		// 最小思考時間が1秒設定でもうまく動くかな？
 //		Options["MinimumThinkingTime"] = "1000";
@@ -962,11 +963,13 @@ void unit_test(Position& pos, istringstream& is)
 
 	Thread* th = Threads.main();
 
+	StateInfo si;
+
 	// hash key
 	// この値が変わると定跡DBがhitしなくなってしまうので変えてはならない。
 	{
 		cout << "> hash key check ";
-		pos.set_hirate(th);
+		pos.set_hirate(&si,th);
 		check( pos.state()->key() == UINT64_C(0x75a12070b8bd438a));
 	}
 
@@ -975,13 +978,13 @@ void unit_test(Position& pos, istringstream& is)
 		// 最多合法手局面
 		const string POS593 = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
 		cout << "> genmove sfen = " << POS593;
-		pos.set(POS593,th);
+		pos.set(POS593,&si,th);
 		auto mg = MoveList<LEGAL_ALL>(pos);
 		cout << " , moves = " << mg.size();
 		check( mg.size() == 593);
 
 		cout << "> perft depth 6 ";
-		pos.set_hirate(th);
+		pos.set_hirate(&si,th);
 		auto result = PerftSolver().Perft<true>(pos,6);
 		check(  result.nodes == 547581517 && result.captures == 3387051
 #ifdef      KEEP_LAST_MOVE
@@ -1031,6 +1034,7 @@ void exam_book(Position& pos)
 	int k = 0;
 	string line;
 	vector<StateInfo> si(moves);
+	StateInfo state; // rootまでの局面
 
 	// 探索済みのsfen(重複局面の除去用)
 	std::unordered_set<string> sfens;
@@ -1053,7 +1057,7 @@ void exam_book(Position& pos)
 			buf += token + " ";
 			if (token == "startpos")
 			{
-				pos.set_hirate(Threads.main());
+				pos.set_hirate(&state,Threads.main());
 				continue;
 			}
 			else if (token == "moves")
@@ -1175,7 +1179,8 @@ void book_check_cmd(Position& pos, istringstream& is)
 
 	string file_name = "book_records.sfen";
 	ofstream of(file_name, ios::out);
-	pos.set_hirate(Threads.main());
+	StateInfo si;
+	pos.set_hirate(&si,Threads.main());
 
 	// とりあえずファイル名は固定でいいや。
 	string book_name = "yaneura_book3.db";
@@ -1230,9 +1235,9 @@ void test_search(Position& pos, istringstream& is)
 }
 #endif
 
-#if defined (EVAL_KPPT)
+#if defined (EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined (EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || defined(EVAL_HELICES) || defined(EVAL_NABLA)
+#include "../eval/evaluate_common.h"
 
-#include "../eval/evaluate_kppt.h"
 // 現在の評価関数のパラメーターについて調査して出力する。(分析用)
 void eval_exam(istringstream& is)
 {
@@ -1282,16 +1287,17 @@ void eval_exam(istringstream& is)
 		Eval::foreach_eval_param(max_abs, i);
 		cout << "max_abs : " << sum0 << " , " << sum1 << endl;
 	}
+
 	cout << "done!" << endl;
 }
 
 //
 // eval merge
-//  KKPT評価関数の合成用
+//  KPPT評価関数の合成用
 //   実験的に作ったもの。あとで消すかも。
 //
 
-struct KKPT_reader
+struct KPPT_reader
 {
 	static const int fe_end = 1548;
 
@@ -1306,8 +1312,9 @@ struct KKPT_reader
 #define KK_BIN "KK_synthesized.bin"
 #define KKP_BIN "KKP_synthesized.bin"
 #define KPP_BIN "KPP_synthesized.bin"
+#define KKPP_BIN "KKPP_synthesized.bin"
 
-	KKPT_reader()
+	KPPT_reader()
 	{
 		kk_ = (ValueKk(*)[SQ_NB][SQ_NB])new ValueKk[int(SQ_NB)*int(SQ_NB)];
 		kpp_ = (ValueKpp(*)[SQ_NB][fe_end][fe_end])new ValueKpp[int(SQ_NB)*int(fe_end)*int(fe_end)];
@@ -1351,7 +1358,7 @@ struct KKPT_reader
 	}
 
 	// 内積を求める。各々の評価関数の内積を駆使すれば合成された関数も分解できるはず
-	double product(const KKPT_reader& eval2)
+	double product(const KPPT_reader& eval2)
 	{
 		double total = 0;
 		for (auto k1 : SQ)
@@ -1392,7 +1399,7 @@ struct KKPT_reader
 	//   6 : KK
 	//   7 : KKP
 	//   8 : KPP
-	void apply_func(const KKPT_reader& eval2, function<s32(s32, s32)> f,int merge_features)
+	void apply_func(const KPPT_reader& eval2, function<s32(s32, s32)> f,int merge_features)
 	{
 		for (auto k1 : SQ)
 			for (auto k2 : SQ)
@@ -1527,7 +1534,7 @@ void eval_merge(istringstream& is)
 	// 適用する関数
 	function<s32(s32, s32)> f;
 
-	cout << "eval merge KKPT" << endl; // とりあえずKKPT型評価関数のmerge専用。
+	cout << "eval merge KPPT" << endl; // とりあえずKKPT型評価関数のmerge専用。
 	cout << "dir1    : " << dir1 << endl;
 	cout << "dir2    : " << dir2 << endl;
 	cout << "OutDir  : " << dir3 << endl;
@@ -1561,7 +1568,7 @@ void eval_merge(istringstream& is)
 
 	MKDIR(dir3);
 
-	KKPT_reader eval1, eval2;
+	KPPT_reader eval1, eval2;
 	eval1.read(dir1);
 	eval2.read(dir2);
 	eval1.apply_func(eval2,f,merge_features);
@@ -1571,6 +1578,18 @@ void eval_merge(istringstream& is)
 
 	cout << "..done" << endl;
 }
+
+#if defined(EVAL_LEARN)
+// "test regkk save_dir"
+void regularize_kk_cmd(istringstream& is)
+{
+	cout << "input  eval dir = " << (string)Options["EvalDir"] << endl;
+	cout << "output eval dir = " << (string)Options["EvalSaveDir"] << endl;
+
+	Eval::regularize_kk();
+	Eval::save_eval("");
+}
+#endif
 
 /* 
    逆行列計算。ライブラリを使うほうが早くて正確なのだが、クッソ小さい行列の計算如きで
@@ -1624,7 +1643,7 @@ void eval_resolve(istringstream& is)
 	cout << endl;
 
 	const int refsize = (int)dirref.size();
-	KKPT_reader eval1, eval2, eval3;
+	KPPT_reader eval1, eval2, eval3;
 	vector<double> prodva; // dirinとdirrefの内積
 	vector< vector<double> > prodaa; //dirref同士の内積
 	vector<double> out; // dirinとdirrefの内積
@@ -1689,6 +1708,10 @@ void eval_convert(istringstream& is)
 	// とすると、逆に、やねうら王2017Early/Apery(WCSC26)の形式で格納されているEVALDIR1/の評価関数が、変換されて
 	// Apery(WCSC27)の形式でEVALDIR2/に格納される。
 
+	// 変換に際して、isreadyコマンドが走るので、このときに評価関数ファイルがEvalDirにないといけないが、
+	// このファイルを用意できていなくて読み込みに失敗する場合は、SkipLoadingEval true(これにより、読み込みがスキップされる)
+	// としてから、この"test evalconvert"コマンドを実行すると良い。
+
 	std::string input_format, input_dir, output_format, output_dir;
 	is >> input_format >> input_dir >> output_format >> output_dir;
 
@@ -1700,6 +1723,8 @@ void eval_convert(istringstream& is)
 			return EvalIO::EvalInfo::build_kppt32(make_name(KK_BIN), make_name(KKP_BIN), make_name(KPP_BIN));
 		else if (format == "kppt16")
 			return EvalIO::EvalInfo::build_kppt16(make_name(KK_BIN), make_name(KKP_BIN), make_name(KPP_BIN));
+		else if (format == "kpp_kkpt32")
+			return EvalIO::EvalInfo::build_kpp_kkpt32(make_name(KK_BIN), make_name(KKP_BIN), make_name(KPP_BIN));
 
 #if defined (USE_EVAL_MAKE_LIST_FUNCTION)
 		// 旧評価関数を実験中の評価関数に変換する裏コマンド
@@ -1718,7 +1743,7 @@ void eval_convert(istringstream& is)
 
 	auto is_valid_format = [](std::string format)
 	{
-		bool result =  (format == "kppt32" || format == "kppt16" || format == "now");
+		bool result =  (format == "kppt32" || format == "kppt16" || format == "kpp_kkpt32" || format == "now");
 		if (!result)
 			cout << "Error! Unknow format , format = " << format << endl;
 		return result;
@@ -1791,6 +1816,7 @@ void dump_sfen(Position& pos, istringstream& is)
 	double vari = 0.0;
 #endif
 
+	StateInfo si;
 	while (!fs.eof())
 	{
 		if (!fs.read((char*)&sfen, sizeof(Learner::PackedSfenValue)))
@@ -1804,7 +1830,7 @@ void dump_sfen(Position& pos, istringstream& is)
 		if (num >= end_number)
 			break;
 
-		pos.set_from_packed_sfen(sfen.sfen,Threads.main());
+		pos.set_from_packed_sfen(sfen.sfen,&si,Threads.main());
 #if 0
 		cout << pos;
 		cout << "value = " << sfen.score << " , num = " << num << endl;
@@ -1977,15 +2003,19 @@ void test_cmd(Position& pos, istringstream& is)
 	else if (param == "timeman") test_timeman();                     // TimeManagerのテスト
 	else if (param == "exambook") exam_book(pos);                    // 定跡の精査用コマンド
 	else if (param == "bookcheck") book_check_cmd(pos,is);           // 定跡のチェックコマンド
-#ifdef EVAL_LEARN
+#if defined (EVAL_LEARN)
 	else if (param == "search") test_search(pos, is);                // 現局面からLearner::search()を呼び出して探索させる
 	else if (param == "dumpsfen") dump_sfen(pos, is);                // gensfenコマンドで生成した教師局面のダンプ
+	else if (param == "evalsave") Eval::save_eval("");               // 現在の評価関数のパラメーターをファイルに保存
 #endif
-#ifdef EVAL_KPPT
+#if defined (EVAL_KPPT) || defined(EVAL_KPP_KKPT)
 	else if (param == "evalmerge") eval_merge(is);                   // 評価関数の合成コマンド
 	else if (param == "evalconvert") eval_convert(is);               // 評価関数の変換コマンド
 	else if (param == "evalexam") eval_exam(is);                     // 評価関数ファイルの調査用
 	else if (param == "evalresolve") eval_resolve(is);               // 評価関数ファイルの調査用
+#if defined(EVAL_LEARN)
+	else if (param == "regkk") regularize_kk_cmd(is);				 // 評価関数のKKの正規化
+#endif
 #endif
 #ifdef USE_KIF_CONVERT_TOOLS
 	else if (param == "kifconvert") test_kif_convert_tools(pos, is); // 現局面からの全合法手を各種形式で出力チェック
