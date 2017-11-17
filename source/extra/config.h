@@ -220,8 +220,8 @@
 // やねうら王2017Early
 #if defined(YANEURAOU_2017_EARLY_ENGINE)
 #define ENGINE_NAME "YaneuraOu 2017 Early"
-#define EVAL_KPPT
-//#define EVAL_KPP_KKPT
+//#define EVAL_KPPT
+#define EVAL_KPP_KKPT
 
 #define USE_EVAL_HASH
 #define USE_SEE
@@ -239,7 +239,7 @@
 // 学習絡みのオプション
 #define USE_SFEN_PACKER
 // 学習機能を有効にするオプション。
-#define EVAL_LEARN
+// #define EVAL_LEARN
 
 // 定跡生成絡み
 #define ENABLE_MAKEBOOK_CMD
