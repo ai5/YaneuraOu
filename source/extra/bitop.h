@@ -26,7 +26,7 @@
 #include <emmintrin.h>
 #else
 #if defined (__GNUC__)
-#ifdef IS_ARM
+#if defined(IS_ARM) && !defined(__clang__)
  #include "../arm_mm_malloc.h"
 #else
  #include <mm_malloc.h> // for _mm_alloc()

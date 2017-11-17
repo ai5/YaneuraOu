@@ -4,7 +4,7 @@
 
 #include <stdlib.h>
 #include <malloc.h>
-
+#if !defined(__clang__)
 static inline void *_mm_malloc(int size, int align)
 {
   void *ret=0;
@@ -17,5 +17,5 @@ static inline void _mm_free(void *__p)
   free(__p);
 }
 
-
+#endif
 #endif

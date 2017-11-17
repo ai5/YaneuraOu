@@ -59,16 +59,16 @@ void bench_cmd(Position& current, istringstream& is)
 	}
 
 	if (limitType == "time")
-		limits.movetime = 1000 * stoi(limit); // movetime is in ms
+		limits.movetime = 1000 * stol(limit); // movetime is in ms
 
 	else if (limitType == "nodes")
-		limits.nodes = stoi(limit);
+		limits.nodes = stoll(limit);
 
 	else if (limitType == "mate")
-		limits.mate = stoi(limit);
+		limits.mate = stol(limit);
 
 	else
-		limits.depth = stoi(limit);
+		limits.depth = stol(limit);
 
 	Options["Hash"] = ttSize;
 	Options["Threads"] = threads;
