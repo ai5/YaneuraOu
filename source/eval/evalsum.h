@@ -133,7 +133,7 @@ namespace Eval {
 			// 手番に依存する評価値合計
 			const int32_t scoreTurn = p[2][1];
 
-#elif defined(EVAL_KPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_HELICES) || defined(EVAL_NABLA)			
+#elif defined(EVAL_KPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KPP_KKPT_FV_VAR) || defined(EVAL_HELICES) || defined(EVAL_NABLA)			
 
 			// p[0][1]とp[1][1]は使っていないタイプのEvalSum
 			const int32_t scoreBoard = p[0][0] - p[1][0] + p[2][0];
@@ -271,6 +271,10 @@ namespace Eval {
 	// →　あまり変わらないし、メモリもったいないのでデフォルトでは↑の設定で良いか…。
 	// 1GB(魔女のAVX2の時の設定)
 	struct EvaluateHashTable : HashTable<EvalSum, 0x2000000> {};
+
+	// メモリが潤沢にあるならもっとメモリを確保したいのだが、
+	// VC++には配列合計が4GBという制約があり…。
+
 #endif
 
 	extern EvaluateHashTable g_evalTable;

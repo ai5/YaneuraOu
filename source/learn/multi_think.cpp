@@ -1,7 +1,7 @@
 ﻿#include "../shogi.h"
 
 #if defined(EVAL_LEARN) && \
-	(defined(YANEURAOU_2017_EARLY_ENGINE) || defined(YANEURAOU_2017_GOKU_ENGINE))
+	(defined(YANEURAOU_2018_OTAFUKU_ENGINE) || defined(YANEURAOU_2018_GOKU_ENGINE))
 
 #include "multi_think.h"
 #include "../tt.h"
@@ -38,6 +38,7 @@ void MultiThink::go_think()
 
 	// ループ上限はset_loop_max()で設定されているものとする。
 	loop_count = 0;
+	done_count = 0;
 
 	// threadをOptions["Threads"]の数だけ生成して思考開始。
 	std::vector<std::thread> threads;

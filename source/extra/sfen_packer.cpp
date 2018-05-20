@@ -342,7 +342,7 @@ struct SfenPacker
 // 高速化のために直接unpackする関数を追加。かなりしんどい。
 // packer::unpack()とPosition::set()とを合体させて書く。
 // 渡された局面に問題があって、エラーのときは非0を返す。
-int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thread* th)
+int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thread* th, bool mirror)
 {
 	SfenPacker packer;
 	auto& stream = packer.stream;
@@ -355,24 +355,41 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
 	// 手番
 	sideToMove = (Color)stream.read_one_bit();
 
+	// evalListのclear。上でmemsetでゼロクリアしたときにクリアされているが…。
+	evalList.clear();
+
 #if defined(USE_FV38)
 	// PieceListを更新する上で、どの駒がどこにあるかを設定しなければならないが、
 	// それぞれの駒をどこまで使ったかのカウンター
 	PieceNumber piece_no_count[KING] = { PIECE_NUMBER_ZERO,PIECE_NUMBER_PAWN,PIECE_NUMBER_LANCE,PIECE_NUMBER_KNIGHT,
 		PIECE_NUMBER_SILVER, PIECE_NUMBER_BISHOP, PIECE_NUMBER_ROOK,PIECE_NUMBER_GOLD };
-
-	evalList.clear();
+#elif defined(USE_FV_VAR)
+	auto& dp = st->dirtyPiece;
+	// FV_VARのときは直接evalListに追加せず、DirtyPieceにいったん追加して、
+	// そのあと、DirtyPiece::update()でevalListに追加する。このupdate()の時に組み換えなどの操作をしたいため。
+	dp.set_state_info(st);
 #endif
 
 	kingSquare[BLACK] = kingSquare[WHITE] = SQ_NB;
 
 	// まず玉の位置
-	for (auto c : COLOR)
-		board[stream.read_n_bit(7)] = make_piece(c, KING);
+	if (mirror)
+	{
+		for (auto c : COLOR)
+			board[Mir((Square)stream.read_n_bit(7))] = make_piece(c, KING);
+	}
+	else
+	{
+		for (auto c : COLOR)
+			board[stream.read_n_bit(7)] = make_piece(c, KING);
+	}
 
 	// 盤上の駒
 	for (auto sq : SQ)
 	{
+		if (mirror)
+			sq = Mir(sq);
+
 		// すでに玉がいるようだ
 		Piece pc;
 		if (type_of(board[sq]) != KING)
@@ -402,7 +419,12 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
 		evalList.put_piece(piece_no, sq, pc); // sqの升にpcの駒を配置する
 #elif defined(USE_FV_VAR)
 		if (type_of(pc) != KING)
-			evalList.add_piece(sq, pc);
+		{
+			dp.add_piece(sq, pc);
+			dp.do_update(evalList);
+			dp.clear();
+			// DirtyPieceのBonaPieceを格納するバッファ、極めて小さいのでevalListに反映させるごとにクリアしておく。
+		}
 #endif
 
 		//cout << sq << ' ' << board[sq] << ' ' << stream.get_cursor() << endl;
@@ -439,9 +461,12 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
 		ASSERT_LV1(is_ok(piece_no));
 		evalList.put_piece(piece_no, color_of(pc), rpc, i++);
 #elif defined(USE_FV_VAR)
-		evalList.add_piece(color_of(pc), rpc, i++);
+		dp.add_piece(color_of(pc), rpc, i++);
+		dp.do_update(evalList);
+		dp.clear();
 #endif
 	}
+
 	if (stream.get_cursor() != 256)
 	{
 		// こんな局面はおかしい。デバッグ用。
@@ -458,6 +483,8 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
 	update_kingSquare();
 
 	set_state(st);
+
+	// --- evaluate
 
 	st->materialValue = Eval::material(*this);
 	Eval::compute_eval(*this);

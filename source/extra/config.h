@@ -103,13 +103,14 @@
 // #define EVAL_KPP       // ！  Bonanza型 3駒関係、手番なし
 // #define EVAL_KPPT      // ○  Bonanza型 3駒関係、手番つき(Apery WCSC26相当)
 // #define EVAL_KPP_KKPT  // ○  KK手番あり + KKP手番あり + KPP手番なし(Ponanza WCSC26相当？)
+// #define EVAL_KPP_KKPT_FV_VAR // ○ KPP_KKPTと同一。※5
 // #define EVAL_KPP_PPT   // ×  PP手番あり + KKP手番あり + KPP手番なし(実装、途中まで)※1
 // #define EVAL_KPPP_KKPT // △  KKP手番あり + KPP手番なし + KPPP(4駒関係)手番なし。→　※2,※3
 // #define EVAL_KPPPT     // △  KPPP(4駒関係)手番あり。→　実装したけどいまひとつだったので差分計算実装せず。※2,※3
 // #define EVAL_PPET      // ×  技巧型 2駒+利き+手番(実装予定なし)
 // #define EVAL_KKPPT     // ○  KKPP型 4駒関係 手番あり。(55将棋、56将棋でも使えそう)※3
 // #define EVAL_KKPP_KKPT // ○  KKPP型 4駒関係 手番はKK,KKPTにのみあり。※3
-// #define EVAL_NABLA     // ？  ∇(ナブラ) 評価関数
+// #define EVAL_NABLA     // ○  ∇(ナブラ) 評価関数(現状、非公開)
 // #define EVAL_HELICES   // ？  螺旋評価関数
 
 // ※1 : KPP_PPTは、差分計算が面倒で割に合わないことが判明したのでこれを使うぐらいならKPP_KKPTで十分だという結論。
@@ -119,6 +120,9 @@
 // ※4 : 以前、EVAL_NO_USEという評価関数なしのものが選択できるようになっていたが、
 //       需要がほとんどない上に、ソースコードがifdefの嵐になるので読みづらいのでバッサリ削除した。
 //		代わりにEVAL_MATERIALを使うと良い。追加コストはほぼ無視できる。
+// ※5 : 可変長EvalListを用いるリファレンス実装。KPP_KKPT型に比べてわずかに遅いが、拡張性が非常に高く、
+//      極めて美しい実装なので、今後、評価関数の拡張は、これをベースにやっていくことになると思う。
+
 
 // 評価関数を教師局面から学習させるときに使うときのモード
 // #define EVAL_LEARN
@@ -211,17 +215,23 @@
 // これをdefineすると、extra/kif_converter/ フォルダにある棋譜や指し手表現の変換を行なう関数群が使用できるようになる。
 // #define USE_KIF_CONVERT_TOOLS
 
+// 128GB超えの置換表を使いたいとき用。
+// このシンボルを定義するとOptions["Hash"]として131072(=128*1024[MB]。すなわち128GB)超えの置換表が扱えるようになる。
+// Stockfishのコミュニティではまだ議論中なのでデフォルトでオフにしておく。
+// cf. 128 GB TT size limitation : https://github.com/official-stockfish/Stockfish/issues/1349
+// #define USE_HUGE_HASH
+
 // --------------------
 // release configurations
 // --------------------
 
 // --- 通常の思考エンジンとして実行ファイルを公開するとき用の設定集
 
-// やねうら王2017Early
-#if defined(YANEURAOU_2017_EARLY_ENGINE)
-#define ENGINE_NAME "YaneuraOu 2017 Early"
-//#define EVAL_KPPT
-#define EVAL_KPP_KKPT
+// やねうら王2018 with お多福ラボ
+#if defined(YANEURAOU_2018_OTAFUKU_ENGINE)
+#define ENGINE_NAME "YaneuraOu 2018 Otafuku"
+#define EVAL_KPPT
+//#define EVAL_KPP_KKPT
 
 #define USE_EVAL_HASH
 #define USE_SEE
@@ -254,12 +264,13 @@
 #endif
 
 
-// 極やねうら王(非公開)
-#if defined(YANEURAOU_2017_GOKU_ENGINE)
-#define ENGINE_NAME "YaneuraOu 2017 GOKU"
+
+// 極やねうら王2018(非公開)
+#if defined(YANEURAOU_2018_GOKU_ENGINE)
+#define ENGINE_NAME "YaneuraOu 2018 GOKU"
 
 //#define EVAL_KPPT
-//#define EVAL_KPP_KKPT
+#define EVAL_KPP_KKPT
 
 //#define USE_HELICES_MIRROR
 //#define EVAL_HELICES 81
@@ -273,9 +284,13 @@
 //#define EVAL_KPPPT 18
 
 //#define EVAL_KKPP_KKPT 36
+//#define EVAL_KKPP_KKPT 45
 //#define EVAL_KKPPT 36
 
-#define EVAL_NABLA
+//#define EVAL_KPP_KKPT_FV_VAR
+
+//#define EVAL_NABLA
+
 //#define EVAL_MATERIAL
 
 // 実験中の評価関数
@@ -301,6 +316,8 @@
 #define USE_SFEN_PACKER
 // 学習機能を有効にするオプション。
 // #define EVAL_LEARN
+// 開発中の教師局面の生成コマンド
+#define USE_GENSFEN2018
 
 // 定跡生成絡み
 #define ENABLE_MAKEBOOK_CMD
@@ -312,6 +329,44 @@
 
 // GlobalOptionsは有効にしておく。
 #define USE_GLOBAL_OPTIONS
+#endif
+
+
+#if defined(YANEURAOU_2018_TNK_ENGINE)
+#define ENGINE_NAME "YaneuraOu 2018 T.N.K."
+#define EVAL_NNUE
+
+#define USE_EVAL_HASH
+#define USE_SEE
+#define USE_MATE_1PLY
+#define USE_ENTERING_KING_WIN
+#define USE_TIME_MANAGEMENT
+#define KEEP_PIECE_IN_GENERATE_MOVES
+#define ONE_PLY_EQ_1
+
+// デバッグ絡み
+//#define ASSERT_LV 3
+//#define USE_DEBUG_ASSERT
+
+#define ENABLE_TEST_CMD
+// 学習絡みのオプション
+#define USE_SFEN_PACKER
+// 学習機能を有効にするオプション。
+#define EVAL_LEARN
+
+// 定跡生成絡み
+#define ENABLE_MAKEBOOK_CMD
+// 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)
+//#define USE_SHARED_MEMORY_IN_EVAL
+// パラメーターの自動調整絡み
+#define USE_GAMEOVER_HANDLER
+//#define LONG_EFFECT_LIBRARY
+
+// GlobalOptionsは有効にしておく。
+#define USE_GLOBAL_OPTIONS
+
+// 探索部はYANEURAOU_2018_OTAFUKU_ENGINEを使う。
+#define YANEURAOU_2018_OTAFUKU_ENGINE
 #endif
 
 
@@ -343,6 +398,7 @@
 #define KEEP_LAST_MOVE
 #undef  MAX_PLY_NUM
 #define MAX_PLY_NUM 2000
+#define USE_SEE
 #define USE_MATE_1PLY
 #define EVAL_MATERIAL
 #define LONG_EFFECT_LIBRARY
@@ -463,7 +519,7 @@ extern GlobalOptions_ GlobalOptions;
 #if !defined (USE_DEBUG_ASSERT)
 #define ASSERT(X) { if (!(X)) *(int*)1 = 0; }
 #else
-#define ASSERT(X) { if (!(X)) { std::cout << "\nError : ASSERT(" << #X << ")" << std::endl; \
+#define ASSERT(X) { if (!(X)) { std::cout << "\nError : ASSERT(" << #X << "), " << __FILE__ << "(" << __LINE__ << "): " << __func__ << std::endl; \
  std::this_thread::sleep_for(std::chrono::microseconds(3000)); *(int*)1 =0;} }
 #endif
 
@@ -527,10 +583,10 @@ inline bool getline(std::fstream& fs, std::string& s)
 // --- output for Japanese notation
 
 // PRETTY_JPが定義されているかどうかによって三項演算子などを使いたいので。
-#ifdef PRETTY_JP
-const bool pretty_jp = true;
+#if defined (PRETTY_JP)
+constexpr bool pretty_jp = true;
 #else
-const bool pretty_jp = false;
+constexpr bool pretty_jp = false;
 #endif
 
 
@@ -567,12 +623,11 @@ const bool pretty_jp = false;
 
 // ターゲットが64bitOSかどうか
 #if (defined(_WIN64) && defined(_MSC_VER)) || (defined(__GNUC__) && defined(__x86_64__)) || defined(IS_64BIT)
-const bool Is64Bit = true;
-#ifndef IS_64BIT
+constexpr bool Is64Bit = true;
 #define IS_64BIT
 #endif
 #else
-const bool Is64Bit = false;
+constexpr bool Is64Bit = false;
 #endif
 
 #if defined(USE_AVX512)
@@ -703,8 +758,12 @@ inline int MKDIR(std::string dir_name)
 #define EVAL_TYPE_NAME "KKPP_KKPT"
 #elif defined(EVAL_KKPPT)
 #define EVAL_TYPE_NAME "KKPPT"
+#elif defined(EVAL_KPP_KKPT_FV_VAR)
+#define EVAL_TYPE_NAME "KPP_KKPT_FV_VAR"
 #elif defined(EVAL_NABLA)
-#define EVAL_TYPE_NAME "NABLA"
+#define EVAL_TYPE_NAME "NABLA V2"
+#elif defined(EVAL_NNUE)
+#define EVAL_TYPE_NAME "NNUE"
 #else
 #define EVAL_TYPE_NAME ""
 #endif
@@ -725,15 +784,19 @@ inline int MKDIR(std::string dir_name)
 //    本来なら、そのどちらも用いないようにも出来ると良いのだが、ソースコードがぐちゃぐちゃになるのでそれはやらないことにした。
 // 6. FV_VAR方式は、Position::do_move()ではpiece_listは更新されず、dirtyPieceの情報のみが更新される。
 //    ゆえに、evaluate()ではdirtyPieceの情報に基づき、piece_listの更新もしなければならない。
+//    →　DirtyPiece::do_update()などを見ること。
+//    また、inv_piece()を用いるので、評価関数の初期化タイミングでEvalLearningTools::init_mir_inv_tables()を呼び出して
+//    inv_piece()が使える状態にしておかなければならない。
+// 7. FV_VAR方式のリファレンス実装として、EVAL_KPP_KKPT_FV_VARがあるので、そのソースコードを見ること。
 
 // あらゆる局面でP(駒)の数が増えないFV38と呼ばれる形式の差分計算用。
-#if defined(EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined(EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || defined(EVAL_HELICES)
+#if defined(EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined(EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || defined(EVAL_HELICES) || defined(EVAL_NNUE)
 #define USE_FV38
 #endif
 
 // P(駒)の数が増えたり減ったりするタイプの差分計算用
 // FV38とは異なり、可変長piece_list。
-#if defined(EVAL_MATERIAL) || defined(EVAL_NABLA)
+#if defined(EVAL_MATERIAL) || defined(EVAL_KPP_KKPT_FV_VAR) || defined(EVAL_NABLA)
 #define USE_FV_VAR
 #endif
 

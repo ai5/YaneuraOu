@@ -6,7 +6,8 @@
 #include "tt.h"
 #include "thread.h"
 
-#if defined(EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined(EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || defined(EVAL_HELICES) || defined(EVAL_NABLA)
+#if defined(EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined(EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || \
+	defined(EVAL_KPP_KKPT_FV_VAR) || defined(EVAL_HELICES) || defined(EVAL_NABLA) || defined(EVAL_NNUE)
 #include "eval/evaluate_common.h"
 #endif
 
@@ -159,6 +160,7 @@ void Position::set(std::string sfen , StateInfo* si , Thread* th)
 	bool promote = false;
 	size_t idx;
 
+	// evalListのclear。上でmemsetでゼロクリアしたときにクリアされているが…。
 	evalList.clear();
 
 #if defined (USE_FV38)
@@ -169,6 +171,11 @@ void Position::set(std::string sfen , StateInfo* si , Thread* th)
 
 	// 先手玉のいない詰将棋とか、駒落ちに対応させるために、存在しない駒はすべてBONA_PIECE_ZEROにいることにする。
 	// 上のevalList.clear()で、ゼロクリアしているので、それは達成しているはず。
+#elif defined(USE_FV_VAR)
+	auto& dp = st->dirtyPiece;
+	// FV_VARのときは直接evalListに追加せず、DirtyPieceにいったん追加して、
+	// そのあと、DirtyPiece::update()でevalListに追加する。このupdate()の時に組み換えなどの操作をしたいため。
+	dp.set_state_info(st);
 #endif
 
 	kingSquare[BLACK] = kingSquare[WHITE] = SQ_NB;
@@ -203,7 +210,14 @@ void Position::set(std::string sfen , StateInfo* si , Thread* th)
 			evalList.put_piece(piece_no, sq, pc); // sqの升にpcの駒を配置する
 #elif defined(USE_FV_VAR)
 			if (type_of(pc) != KING)
-				evalList.add_piece(sq, pc);
+			{
+				dp.add_piece(sq, pc);
+				dp.do_update(evalList);
+				dp.clear();
+				// DirtyPieceのBonaPieceを格納するバッファ、極めて小さいのでevalListに反映させるごとにクリアしておく。
+
+				//Eval::print_eval_list(*this);
+			}
 #endif
 
 			// 1升進める
@@ -256,7 +270,9 @@ void Position::set(std::string sfen , StateInfo* si , Thread* th)
 				ASSERT_LV1(is_ok(piece_no));
 				evalList.put_piece(piece_no, color_of(Piece(idx)), rpc, i);
 #elif defined(USE_FV_VAR)
-				evalList.add_piece(color_of(Piece(idx)), rpc, i);
+				dp.add_piece(color_of(Piece(idx)), rpc, i);
+				dp.do_update(evalList);
+				dp.clear();
 #endif
 			}
 			ct = 0;
@@ -998,6 +1014,15 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 
 	//std::cout << *this << m << std::endl;
 
+#if defined(USE_FV_VAR)
+	// 前nodeでのdirtyPieceをevalListに反映させていない可能性がある。
+	// 毎node、evaluate()を呼び出すならevaluate()側の責任においてそれは行われるのだが、
+	// positionコマンドなどで特定局面までevaluate()を呼び出さずにdo_move()することがあるので、
+	// ここでそのチェックをしておかなければならない。
+	if (!st->dirtyPiece.updated())
+		st->dirtyPiece.do_update(evalList);
+#endif
+
 	// ----------------------
 	//  StateInfoの更新
 	// ----------------------
@@ -1014,6 +1039,12 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 	// std::memcpy(&new_st, st, offsetof(StateInfo, checkersBB));
 	// 将棋ではこの処理、要らないのでは…。
 
+	// ここ、もう少し汎用的な記述手段をあとで考える。
+#if defined(EVAL_NABLA)
+	// 前のnodeの値をコピーする。
+	std::memcpy(&new_st.nabla_work , &st->nabla_work , sizeof(StateInfo::nabla_work));
+#endif
+
 	// StateInfoを遡れるようにpreviousを設定しておいてやる。
 	StateInfo* prev;
 	new_st.previous = prev = st;
@@ -1029,8 +1060,13 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 
 	// 評価値の差分計算用の初期化
 
-#if defined(EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined(EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || defined(EVAL_EXPERIMENTAL) || defined(EVAL_HELICES) || defined(EVAL_NABLA)
+#if defined(EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined(EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || \
+	defined(EVAL_KPP_KKPT_FV_VAR) || defined(EVAL_EXPERIMENTAL) || defined(EVAL_HELICES) || defined(EVAL_NABLA)
 	st->sum.p[0][0] = VALUE_NOT_EVALUATED;
+#endif
+#if defined(EVAL_NNUE)
+	st->accumulator.computed_accumulation = false;
+	st->accumulator.computed_score = false;
 #endif
 
 	// 直前の指し手を保存するならばここで行なう。
@@ -1051,11 +1087,12 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 	// 駒割りの差分計算用
 	int materialDiff;
 
-#if defined (USE_FV38)
 	auto& dp = st->dirtyPiece;
-#elif defined(USE_FV_VAR)
-	auto& dp = st->dirtyPiece;
+
+#if defined(USE_FV_VAR)
+	// add()していくので、length = 0にしないといけない。
 	dp.clear();
+	dp.set_state_info(st);
 #endif
 
 	if (is_drop(m))
@@ -1225,16 +1262,19 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 #endif
 		}
 
+#if defined (USE_FV38)
+		// 移動元にあった駒のpiece_noを得る
+		PieceNumber piece_no2 = piece_no_of(from);
+		dp.pieceNo[0] = piece_no2;
+		dp.changed_piece[0].old_piece = evalList.bona_piece(piece_no2);
+#endif
+
 		// 移動元の升からの駒の除去
 		remove_piece(from);
 		// 移動先の升に駒を配置
 		put_piece(to, moved_after_pc);
 
 #if defined (USE_FV38)
-		// 移動元にあった駒のpiece_noを得る
-		PieceNumber piece_no2 = piece_no_of(from);
-		dp.pieceNo[0] = piece_no2;
-		dp.changed_piece[0].old_piece = evalList.bona_piece(piece_no2);
 		evalList.put_piece(piece_no2, to, moved_after_pc);
 		dp.changed_piece[0].new_piece = evalList.bona_piece(piece_no2);
 
@@ -1254,8 +1294,9 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 		}
 		else
 		{
-			dp.remove_piece(from, moved_pc);
-			dp.add_piece(to, moved_after_pc);
+			//dp.remove_piece(from, moved_pc);
+			//dp.add_piece(to, moved_after_pc);
+			dp.remove_and_add_piece(from, moved_pc, to, moved_after_pc);
 			dp.moved_king = COLOR_NB; // 玉の移動ではないことを示しておく。
 		}
 #endif
@@ -1592,6 +1633,12 @@ void Position::do_null_move(StateInfo& newSt) {
 	ASSERT_LV3(!checkers());
 	ASSERT_LV3(&newSt != st);
 
+#if defined(USE_FV_VAR)
+	// evalListがupdateされずにdo_null_move()を呼び出している可能性がある。do_move()のほうの説明を読むこと。
+	if (!st->dirtyPiece.updated())
+		st->dirtyPiece.do_update(evalList);
+#endif
+
 	// この場合、StateInfo自体は丸ごとコピーしておかないといけない。(他の初期化をしないので)
 	// よく考えると、StateInfo、新しく作る必要もないのだが…。まあ、CheckInfoがあるので仕方ないか…。
 	std::memcpy(&newSt, st, sizeof(StateInfo));
@@ -1610,6 +1657,13 @@ void Position::do_null_move(StateInfo& newSt) {
 
 	// これは、さっきアクセスしたところのはずなので意味がない。
 	//  Eval::prefetch_evalhash(key);
+
+#if defined(EVAL_NNUE)
+#if defined(USE_EVAL_HASH)
+	Eval::prefetch_evalhash(key);
+#endif
+	st->accumulator.computed_score = false;
+#endif
 
 	st->pliesFromNull = 0;
 
@@ -1636,7 +1690,9 @@ RepetitionState Position::is_repetition(int ply) const
 	// repPlyまで遡る
 	// rootより遡るのであれば2度同一局面が出現する必要があるので16の倍にしておく。
 	// この値が増えるの、多少、気分が悪いところではあるが…。
-	// これ16→32で1%ぐらい速度低下するようだ。16手目までに1度も同一局面が出現しなければリタイアするか。
+	//
+	// これ16から32に変更したことで1%ぐらい速度低下するようだ。
+	// 16手目までに1度も同一局面が出現しなければリタイアしたいが、この処理を綺麗に書くのは難しい…。
 	const int repPly = 16 * 2;
 
 	// 現在の局面と同じhash keyを持つ局面があれば、それは千日手局面であると判定する。

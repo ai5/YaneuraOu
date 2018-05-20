@@ -1,9 +1,5 @@
 ﻿#include "../../shogi.h"
 
-#if defined(YANEURAOU_2017_GOKU_ENGINE)
-#include "../2017-goku-engine/2017-goku-search.cpp"
-#endif
-
 #if defined(YANEURAOU_2017_EARLY_ENGINE)
 
 // -----------------------
@@ -2524,7 +2520,7 @@ void Thread::search()
 		if (Limits.use_time_management())
 		{
 			// まだ停止が確定していない
-			if (!Threads.stop && !Time.search_end)
+			if (!Threads.stop && Time.search_end == 0)
 			{
 
 				// 1つしか合法手がない(one reply)であるだとか、利用できる時間を使いきっているだとか、

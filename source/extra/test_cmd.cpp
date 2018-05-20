@@ -15,6 +15,11 @@
 using namespace EvalLearningTools;
 #endif
 
+#if defined(EVAL_NNUE)
+#include "../eval/evaluate_common.h"
+#include "../eval/nnue/nnue_test_command.h"
+#endif
+
 // ----------------------------------
 //  USI拡張コマンド "perft"(パフォーマンステスト)
 // ----------------------------------
@@ -1110,6 +1115,37 @@ void exam_book(Position& pos)
 }
 
 
+/*
+	定跡を思考によって生成するときに、思考対象局面をリストアップする関数。
+	ソースコードは書き殴ってあり、隠しコマンドでもあるので、積極的に使って欲しいコマンドではなくあくまで参考用。
+
+	// 以下にbatファイルとJenkinsのjobの例を書いておくので、わかる人だけわかって。
+
+	// 思考対象局面のsfenを生成するbatファイルの例
+	// 1. 前回のiteration(JenkinsのJob)で生成した定跡ファイルがa.dbとリネームして、カレントフォルダに存在するものとする。
+	// 2. makebook sortコマンドを使って定跡DBのソートを行ない書き出す。(これをしておかないと二分探索できない)
+	// 3. yaneura_book4.dbが生成される定跡DBである。
+	// 4. ファイル名に日付をつけてバックアップ用のフォルダに保存する処理が書いてある。
+
+		set dt=%date%& set tm=%time%
+		if "%tm:~0,5%"==" 0:00" set dt=%date%
+
+		YaneuraOuGoku_KPPT.exe makebook sort a.db a.db , quit
+		copy book\yaneura_book4.db "%YANEHOME%\book\old\yaneura_book4 - %dt:~-10,4%%dt:~-5,2%%dt:~-2,2%%tm:~0,2%%tm:~3,2%%tm:~6,2%.db"
+		copy a.db book\yaneura_book4.db
+		YaneuraOuGoku_KPPT.exe test bookcheck , quit
+		copy book_records.sfen %YANEHOME%\book\records2017.sfen
+		copy book\yaneura_book4.db \\SHOGI_SERVER\yanehome\book
+
+		pause
+
+	// makebook thinkコマンドで思考するJenkins用のjobの例)
+
+		copy %YANEHOME%\book\yaneura_book4.db  %YANEHOME%\book_work\%BUILD_NUMBER%.db
+		start /B /WAIT /D %YANEHOME% %YANEHOME%\exe\YaneuraOuGoku_KPPT.exe multipv %MULTI_PV% , bookfile yaneura_book4.db , evaldir eval/%EVAL_DIR% , threads %HT_CORES% , hash 16384 , makebook think %YANEHOME%\book\%THINK_SFEN% %YANEHOME%\book_work\%BUILD_NUMBER%.db startmoves %START_MOVES% moves %END_MOVES% depth %DEPTH% cluster %CLUSTER% , quit
+
+
+*/
 void book_check(Position& pos, Color rootTurn, Book::MemoryBook& book, string sfen, ofstream& of)
 {
 	int ply = pos.game_ply();
@@ -1127,22 +1163,80 @@ void book_check(Position& pos, Color rootTurn, Book::MemoryBook& book, string sf
 			// 自分の手番なのでN=1
 			n = 1;
 		} else {
-#if 0
-			// 4手目までは4手ずつ候補をあげる。
-			if (ply <= 4)
-				n = 4;
-			else
-				n = 2;
-#else
 			// 常に相手側の平均分岐数は4に設定すればどうか。
-			n = 4;
-#endif
+			// →　上限がmove_list.size()すなわち、MultiPVで設定した値になっているはずなので(候補手がある限りは)
+			// ここは制限せずに、大きく10としておき、best moveの評価値との差が50以上ある指し手を枝刈りするなどして
+			// 調整したほうが良い。
+
+			// 備考 : 平手の開始局面から84歩と指した局面でdepth 34でMultiPV10で探索させたところ、34歩が5番目の
+			// 指し手になっていて、そこ以降の指し手treeが得られていなかった。
+
+			n = 10;
 		}
 
 		for (size_t i = 0; i < n; ++i)
 		{
 			if (move_list.size() <= i)
 				break;
+
+#if 0
+			// 定跡生成のときにevalが-400以下とかなら、その枝、それ以上生成しなくていいような…。
+			// 自分側から見て-400になるような局面に行く指し手を自分は選ばないはずだし、
+			// 相手側から見て-400以下の局面に到達したなら、あとは自力で勝てるだろうから…。
+			// ※　評価値の絶対値が大きい局面は終盤に近く、depth固定だとあまりiterationが回らず、定跡生成に
+			// 極端に時間がかかる原因となるのでこのような枝刈りが必須。
+
+			if (move_list[i].value <= -400)
+				continue;
+
+			if (move_list[0].value - move_list[i].value >= 100)
+				continue;
+#endif
+
+#if 0
+			// 定跡の生成を進めていくときに(ply >= 10ぐらいから)、
+			// 途中までの経路において、valueが-200以下だとか、
+			// best moveとのvalueの差が50～100以上なら、そんな指し手も枝刈りしていいだろう…。
+
+			if (move_list[i].value <= -200)
+				continue;
+
+			// 4手目までにこの条件を入れてしまうと、いまのコンピュータ将棋では振り飛車をかなり悪く評価しているので
+			// 初手から86歩34歩76歩44歩の44歩だが、best valueとの差が100以上あってここで枝刈りされてしまう。
+			// そこで5手目まではこの条件を有効にしない。
+			if (pos.game_ply() >= 5 && move_list[0].value - move_list[i].value >= 50)
+				continue;
+#endif
+
+#if 1
+			// 上の式でもply=14ぐらいから組み合わせ爆発がひどい。もう少し厳し目の条件で考えてみる。
+
+			// 先手なら -50～+150まで
+			// 後手なら-150～+100まで
+			// bestmoveとの差、50まで。
+
+			if ((pos.side_to_move() == BLACK && !( -50 <= move_list[i].value && move_list[i].value <= 150))
+			||  (pos.side_to_move() == WHITE && !(-150 <= move_list[i].value && move_list[i].value <= 100)))
+				continue;
+
+			if (pos.game_ply() >= 5 && move_list[0].value - move_list[i].value >= 50)
+				continue;
+#endif
+
+#if 0
+			// もっともっと厳しい条件
+
+			// 先手なら -20～+120まで
+			// 後手なら-150～+100まで
+			// bestmoveとの差、30まで。
+
+			if ((pos.side_to_move() == BLACK && !( -20 <= move_list[i].value && move_list[i].value <= 120))
+			 || (pos.side_to_move() == WHITE && !(-150 <= move_list[i].value && move_list[i].value <= 100)))
+				continue;
+
+			if (pos.game_ply() >= 5 && move_list[0].value - move_list[i].value >= 30)
+				continue;
+#endif
 
 			Move m = move_list[i].bestMove;
 
@@ -1183,7 +1277,7 @@ void book_check_cmd(Position& pos, istringstream& is)
 	pos.set_hirate(&si,Threads.main());
 
 	// とりあえずファイル名は固定でいいや。
-	string book_name = "yaneura_book3.db";
+	string book_name = "yaneura_book4.db";
 
 	// bookの読み込み。
 	Book::MemoryBook book;
@@ -1235,7 +1329,8 @@ void test_search(Position& pos, istringstream& is)
 }
 #endif
 
-#if defined (EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined (EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || defined(EVAL_HELICES) || defined(EVAL_NABLA)
+#if defined (EVAL_KPPT) || defined(EVAL_KPP_KKPT) || defined (EVAL_KPPPT) || defined(EVAL_KPPP_KKPT) || defined(EVAL_KKPP_KKPT) || defined(EVAL_KKPPT) || \
+	defined(EVAL_KPP_KKPT_FV_VAR) || defined(EVAL_HELICES) || defined(EVAL_NABLA)
 #include "../eval/evaluate_common.h"
 
 // 現在の評価関数のパラメーターについて調査して出力する。(分析用)
@@ -2020,6 +2115,9 @@ void test_cmd(Position& pos, istringstream& is)
 #ifdef USE_KIF_CONVERT_TOOLS
 	else if (param == "kifconvert") test_kif_convert_tools(pos, is); // 現局面からの全合法手を各種形式で出力チェック
 #endif
+#if defined(EVAL_NNUE)
+	else if (param == "nnue") Eval::NNUE::TestCommand(pos, is);
+#endif
 	else {
 		// --- usage
 
@@ -2102,12 +2200,9 @@ void test_mate_engine_cmd(Position& pos, istringstream& is) {
 	time.reset();
 
 	for (const char* sfen : TestMateEngineSfen) {
-		Search::StateStackPtr st;
-		auto states = Search::StateStackPtr(new aligned_stack<StateInfo>);
-		states->push(StateInfo());
-
 		Position pos;
-		pos.set(sfen, Threads.main());
+		StateListPtr st(new StateList(1));
+		pos.set(sfen, &st->back(), Threads.main());
 
 		sync_cout << "\nPosition: " << sfen << sync_endl;
 
