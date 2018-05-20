@@ -57,29 +57,6 @@
 #include "extra/bitop.h"
 
 
-#ifdef __ANDROID__
-// gnustlにはto_stringがない
-#include <string>
-#include <sstream>
-namespace std {
-    template<typename T>
-    std::string to_string(const T &n) {
-        std::ostringstream s;
-        s << n;
-        return s.str();
-    }
-}
-
-inline int stoi(const std::string& s) {
-	std::stringstream ss(s);
-	int result = 0;
-	ss >> result;
-	return result;
-}
-
-
-#endif
-
 // --------------------
 //      手番
 // --------------------
