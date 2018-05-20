@@ -264,8 +264,13 @@ namespace Eval {
 	// evaluateしたものを保存しておくHashTable(俗にいうehash)
 
 #if !defined(USE_LARGE_EVAL_HASH)
+#if defined(__ANDROID__) && defined(__x86_64__)
+	// pieの制限に引っかかるので134MBの半分
+	struct EvaluateHashTable : HashTable<EvalSum, 0x200000> {};
+#else
 	// 134MB(魔女のAVX2以外の時の設定)
 	struct EvaluateHashTable : HashTable<EvalSum, 0x400000> {};
+#endif
 #else
 	// prefetch有りなら大きいほうが良いのでは…。
 	// →　あまり変わらないし、メモリもったいないのでデフォルトでは↑の設定で良いか…。
