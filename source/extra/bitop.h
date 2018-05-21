@@ -29,11 +29,7 @@
 #include <mm_malloc.h> // for _mm_alloc()
 #else
 #if defined (__GNUC__)
-#if defined(IS_ARM) && !defined(__clang__)
- #include "../arm_mm_malloc.h"
-#else
  #include <mm_malloc.h> // for _mm_alloc()
-#endif
 #endif
 #endif
 
@@ -103,7 +99,11 @@ inline uint64_t PEXT64(uint64_t a, uint64_t b) { return pext(a, b); }
 //     POPCNT(SSE4.2の命令)
 // ----------------------------
 
-#ifdef USE_SSE42
+#if defined(IS_ARM)
+#define POPCNT32(a) __builtin_popcount(a)
+#define POPCNT64(a) __builtin_popcountll(a)
+
+#elif defined(USE_SSE42)
 
 // for SSE4.2
 #include <nmmintrin.h>

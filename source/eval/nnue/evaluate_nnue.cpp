@@ -150,11 +150,20 @@ struct alignas(16) ScoreKeyValue {
     _mm_store_si128(&as_m128i, other.as_m128i);
     return *this;
   }
+#elif defined(IS_ARM)
+	ScoreKeyValue() = default;
+	ScoreKeyValue(const ScoreKeyValue& other) {
+		vst1q_s32((int32_t*)&as_m128i, other.as_m128i);
+	}
+	ScoreKeyValue& operator=(const ScoreKeyValue& other) {
+		vst1q_s32((int32_t*)&as_m128i, other.as_m128i);
+		return *this;
+	}
 #endif
 
   // evaluate hashでatomicに操作できる必要があるのでそのための操作子
   void encode() {
-#if defined(USE_SSE2)
+#if defined(USE_SSE2) || defined(IS_ARM)
     // ScoreKeyValue は atomic にコピーされるので key が合っていればデータも合っている。
 #else
     key ^= score;
@@ -170,6 +179,8 @@ struct alignas(16) ScoreKeyValue {
     };
 #if defined(USE_SSE2)
     __m128i as_m128i;
+#elif defined(IS_ARM)
+	int32x4_t as_m128i;
 #endif
   };
 };
@@ -192,8 +203,13 @@ struct HashTable {
 // evaluateしたものを保存しておくHashTable(俗にいうehash)
 
 #if !defined(USE_LARGE_EVAL_HASH)
+#if (defined(__ANDROID__) && defined(__x86_64__)) || !defined(IS_64BIT)
+// PIEの制限に引っかかるのでちょっと少な目に
+struct EvaluateHashTable : HashTable<ScoreKeyValue, 0x400000> {};
+#else
 // 134MB(魔女のAVX2以外の時の設定)
 struct EvaluateHashTable : HashTable<ScoreKeyValue, 0x800000> {};
+#endif
 #else
 // prefetch有りなら大きいほうが良いのでは…。
 // →　あまり変わらないし、メモリもったいないのでデフォルトでは↑の設定で良いか…。
