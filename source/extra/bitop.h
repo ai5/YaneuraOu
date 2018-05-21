@@ -147,8 +147,6 @@ inline int32_t POPCNT64(uint64_t a) {
 #include <intrin.h>
 
 #ifdef IS_64BIT
-
-#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 // 1である最下位のbitのbit位置を得る。0を渡してはならない。
 FORCE_INLINE int LSB32(uint32_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanForward(&index, v); return index; }
 FORCE_INLINE int LSB64(uint64_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanForward64(&index, v); return index; }
@@ -156,16 +154,6 @@ FORCE_INLINE int LSB64(uint64_t v) { ASSERT_LV3(v != 0); unsigned long index; _B
 // 1である最上位のbitのbit位置を得る。0を渡してはならない。
 FORCE_INLINE int MSB32(uint32_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanReverse(&index, v); return index; }
 FORCE_INLINE int MSB64(uint64_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanReverse64(&index, v); return index; }
-
-#else
-// 1である最下位のbitのbit位置を得る。0を渡してはならない。
-inline int LSB32(uint32_t v) { ASSERT_LV3(v != 0); return __builtin_ctz(v); }
-inline int LSB64(uint64_t v) { ASSERT_LV3(v != 0); return __builtin_ctzll(v); }
-
-// 1である最上位のbitのbit位置を得る。0を渡してはならない。
-inline int MSB32(uint32_t v) { ASSERT_LV3(v != 0); return 31 - __builtin_clz(v); }
-inline int MSB64(uint64_t v) { ASSERT_LV3(v != 0); return 63 - __builtin_clzll(v); }
-#endif
 
 #else
 
