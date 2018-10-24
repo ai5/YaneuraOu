@@ -1,5 +1,65 @@
-ÅZ ver 4.82 NNUE
 
+ÅZ ver 4.83 NNUE
+
+ÅEarm64-v8a
+info depth 17 seldepth 34 score cp -1271 nodes 4724159 nps 113381 hashfull 782 time 41666 pv 8d7d P*7f 7d5d 5e5d 5b4b 4a3b+ 4b3b S*2e 2d1c 2e1d 1c1b G*7h 4e5g+ R*6b P*8g 7g8g 5g6g 6b6g+ 5i5d+ N*2e 1b2a N*3c 2b3c 2e3c+
+bestmove 8d7d ponder P*7f
+
+info depth 17 seldepth 30 score cp -1112 nodes 4241463 nps 113724 hashfull 726 time 37296 pv N*4d 5b5c S*4b 2d4b 6f5g G*7i 6i5h 2g3g G*3d 4b2d 4d5b+ 5c5b L*4f P*4e 6e6d 6c6d 3d2d 2f2d B*3c S*7h 6h7h 2d5d 7h7i B*7f P*6g 4e4f
+bestmove N*4d ponder 5b5c
+
+info depth 17 seldepth 31 score cp -5615 nodes 2107848 nps 131379 hashfull 367 time 16044 pv G*1c 4b3b 2b2c 2d2c+ 1c2c G*2b 6f2b 3b2b 2c2b 2i3i G*3c R*5b P*3b B*3d N*2c G*2d S*3a 2d1d P*1c P*2d 1c1d 3d2c+ 2b2c 2d2c+ 3c2c
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 95041
+Nodes searched  : 11073470
+Nodes/second    : 116512
+
+
+ÅEarmeabi-v7a
+
+info depth 17 seldepth 34 score cp -1271 nodes 4724159 nps 91214 hashfull 782 time 51792 pv 8d7d P*7f 7d5d 5e5d 5b4b 4a3b+ 4b3b S*2e 2d1c 2e1d 1c1b G*7h 4e5g+ R*6b P*8g 7g8g 5g6g 6b6g+ 5i5d+ N*2e 1b2a N*3c 2b3c 2e3c+
+bestmove 8d7d ponder P*7f
+
+info depth 17 seldepth 30 score cp -1112 nodes 4241463 nps 90604 hashfull 726 time 46813 pv N*4d 5b5c S*4b 2d4b 6f5g G*7i 6i5h 2g3g G*3d 4b2d 4d5b+ 5c5b L*4f P*4e 6e6d 6c6d 3d2d 2f2d B*3c S*7h 6h7h 2d5d 7h7i B*7f P*6g 4e4f
+bestmove N*4d ponder 5b5c
+
+info depth 17 seldepth 31 score cp -5615 nodes 2107848 nps 105192 hashfull 367 time 20038 pv G*1c 4b3b 2b2c 2d2c+ 1c2c G*2b 6f2b 3b2b 2c2b 2i3i G*3c R*5b P*3b B*3d N*2c G*2d S*3a 2d1d P*1c P*2d 1c1d 3d2c+ 2b2c 2d2c+ 3c2c
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 118647
+Nodes searched  : 11073470
+Nodes/second    : 93331
+
+
+ÅEx86
+info depth 17 seldepth 34 score cp -1271 nodes 4724159 nps 120030 hashfull 782 time 39358 pv 8d7d P*7f 7d5d 5e5d 5b4b 4a3b+ 4b3b S*2e 2d1c 2e1d 1c1b G*7h 4e5g+ R*6b P*8g 7g8g 5g6g 6b6g+ 5i5d+ N*2e 1b2a N*3c 2b3c 2e3c+
+bestmove 8d7d ponder P*7f
+
+info depth 17 seldepth 30 score cp -1112 nodes 4241463 nps 119155 hashfull 726 time 35596 pv N*4d 5b5c S*4b 2d4b 6f5g G*7i 6i5h 2g3g G*3d 4b2d 4d5b+ 5c5b L*4f P*4e 6e6d 6c6d 3d2d 2f2d B*3c S*7h 6h7h 2d5d 7h7i B*7f P*6g 4e4f
+bestmove N*4d ponder 5b5c
+
+info depth 17 seldepth 31 score cp -5615 nodes 2107848 nps 123605 hashfull 367 time 17053 pv G*1c 4b3b 2b2c 2d2c+ 1c2c G*2b 6f2b 3b2b 2c2b 2i3i G*3c R*5b P*3b B*3d N*2c G*2d S*3a 2d1d P*1c P*2d 1c1d 3d2c+ 2b2c 2d2c+ 3c2c
+bestmove G*1c ponder 4b3b
+
+ÅEx86_64
+info depth 17 seldepth 34 score cp -1271 nodes 4724159 nps 355654 hashfull 782 time 13283 pv 8d7d P*7f 7d5d 5e5d 5b4b 4a3b+ 4b3b S*2e 2d1c 2e1d 1c1b G*7h 4e5g+ R*6b P*8g 7g8g 5g6g 6b6g+ 5i5d+ N*2e 1b2a N*3c 2b3c 2e3c+
+bestmove 8d7d ponder P*7f
+
+info depth 17 seldepth 30 score cp -1112 nodes 4241463 nps 348088 hashfull 726 time 12185 pv N*4d 5b5c S*4b 2d4b 6f5g G*7i 6i5h 2g3g G*3d 4b2d 4d5b+ 5c5b L*4f P*4e 6e6d 6c6d 3d2d 2f2d B*3c S*7h 6h7h 2d5d 7h7i B*7f P*6g 4e4f
+bestmove N*4d ponder 5b5c
+
+info depth 17 seldepth 31 score cp -5615 nodes 2107848 nps 376065 hashfull 367 time 5605 pv G*1c 4b3b 2b2c 2d2c+ 1c2c G*2b 6f2b 3b2b 2c2b 2i3i G*3c R*5b P*3b B*3d N*2c G*2d S*3a 2d1d P*1c P*2d 1c1d 3d2c+ 2b2c 2d2c+ 3c2c
+bestmove G*1c ponder 4b3b
+
+===========================
+Total time (ms) : 31071
+Nodes searched  : 11073470
+Nodes/second    : 356392
+
+ÅZ ver 4.82 NNUE
 
 ÅEarm64-v8a
 info depth 17 seldepth 34 score cp -1271 nodes 4724159 nps 109963 hashfull 782 time 42961 pv 8d7d P*7f 7d5d 5e5d 5b4b 4a3b+ 4b3b S*2e 2d1c 2e1d 1c1b G*7h 4e5g+ R*6b P*8g 7g8g 5g6g 6b6g+ 5i5d+ N*2e 1b2a N*3c 2b3c 2e3c+
