@@ -1802,6 +1802,10 @@ void LearnerThink::calc_loss(size_t thread_id, u64 done)
 
 void LearnerThink::thread_worker(size_t thread_id)
 {
+#if defined(_OPENMP)
+	omp_set_num_threads((int)Options["Threads"]);
+#endif
+
 	auto th = Threads[thread_id];
 	auto& pos = th->rootPos;
 
@@ -2126,7 +2130,7 @@ bool LearnerThink::save(bool is_final)
 			if (latest_loss < best_loss) {
 				cout << " < best (" << best_loss << "), accepted" << endl;
 				best_loss = latest_loss;
-				best_nn_directory = path_combine((std::string)Options["EvalSaveDir"], dir_name);
+				best_nn_directory = Path::Combine((std::string)Options["EvalSaveDir"], dir_name);
 				trials = newbob_num_trials;
 			} else {
 				cout << " >= best (" << best_loss << "), rejected" << endl;
@@ -2678,7 +2682,7 @@ void learn(Position&, istringstream& is)
 	// 学習棋譜ファイルの表示
 	if (target_dir != "")
 	{
-		string kif_base_dir = path_combine(base_dir, target_dir);
+		string kif_base_dir = Path::Combine(base_dir, target_dir);
 
 		// このフォルダを根こそぎ取る。base_dir相対にしておく。
 #if defined(_MSC_VER)
@@ -2692,7 +2696,7 @@ void learn(Position&, istringstream& is)
 		std::for_each(sys::directory_iterator(p), sys::directory_iterator(),
 			[&](const sys::path& p) {
 			if (sys::is_regular_file(p))
-				filenames.push_back(path_combine(target_dir, p.filename().generic_string()));
+				filenames.push_back(Path::Combine(target_dir, p.filename().generic_string()));
 		});
 		#pragma warning(pop)
 
@@ -2718,7 +2722,7 @@ void learn(Position&, istringstream& is)
 				if (entry != NULL  && ends_with(entry->d_name, ".bin")  )
 				{
 					//cout << entry->d_name << endl;
-					filenames.push_back(path_combine(target_dir, entry->d_name));
+					filenames.push_back(Path::Combine(target_dir, entry->d_name));
 				}
 			} while (entry != NULL);
 			closedir(dp);
@@ -2784,7 +2788,7 @@ void learn(Position&, istringstream& is)
 	for (int i = 0; i < loop; ++i)
 		// sfen reader、逆順で読むからここでreverseしておく。すまんな。
 		for (auto it = filenames.rbegin(); it != filenames.rend(); ++it)
-			sr.filenames.push_back(path_combine(base_dir, *it));
+			sr.filenames.push_back(Path::Combine(base_dir, *it));
 
 #if !defined(EVAL_NNUE)
 	cout << "Gradient Method   : " << LEARN_UPDATE      << endl;
@@ -2862,10 +2866,6 @@ void learn(Position&, istringstream& is)
 	pos.state()->sum.p[2][0] = VALUE_NOT_EVALUATED;
 	cout << Eval::evaluate(pos) << endl;
 	//Eval::print_eval_stat(pos);
-#endif
-
-#if defined( _OPENMP )
-	omp_set_num_threads((int)Options["Threads"]);
 #endif
 
 	cout << "init done." << endl;
