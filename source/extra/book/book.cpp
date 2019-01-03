@@ -932,6 +932,11 @@ namespace Book
 		if (pure_book_name == "no_book")
 			return PosMoveListPtr();
 
+		if (Options["OwnBook"] == false)
+		{
+			return PosMoveListPtr();
+		}
+
 		if (pure_book_name == kAperyBookName) {
 
 			PosMoveListPtr pml_entry(new PosMoveList());
@@ -1231,6 +1236,8 @@ namespace Book
 
 	void BookMoveSelector::init(USI::OptionsMap & o)
 	{
+		o["OwnBook"] = Option(false);
+
 		// 実現確率の低い狭い定跡を選択しない
 		o["NarrowBook"] << Option(false);
 

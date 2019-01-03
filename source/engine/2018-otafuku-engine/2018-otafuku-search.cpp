@@ -2471,7 +2471,7 @@ void Thread::search()
 	size_t multiPV = Options["MultiPV"];
 
 	// SkillLevelの実装
-	Skill skill((int)Options["SkillLevel"]);
+	Skill skill((int)Options["USI_SkillLevel"]);
 
 	// 強さの手加減が有効であるとき、MultiPVを有効にして、その指し手のなかから舞台裏で指し手を探す。
 	// ※　SkillLevelが有効(設定された値が20未満)のときは、MultiPV = 4で探索。
@@ -2965,7 +2965,7 @@ ID_END:;
 	if (   !this->easyMovePlayed
 		&&  Options["MultiPV"] == 1
 		&& !Limits.depth
-		&& !Skill((int)Options["SkillLevel"]).enabled()
+		&& !Skill((int)Options["USI_SkillLevel"]).enabled()
 		&&  rootMoves[0].pv[0] != MOVE_NONE)
 	{
 		// 深くまで探索できていて、かつそっちの評価値のほうが優れているならそのスレッドの指し手を採用する
