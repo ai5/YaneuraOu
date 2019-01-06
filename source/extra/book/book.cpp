@@ -1236,7 +1236,7 @@ namespace Book
 
 	void BookMoveSelector::init(USI::OptionsMap & o)
 	{
-		o["OwnBook"] = Option(false);
+		o["OwnBook"] << Option(true);
 
 		// 実現確率の低い狭い定跡を選択しない
 		o["NarrowBook"] << Option(false);
