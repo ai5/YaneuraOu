@@ -1,7 +1,7 @@
 ﻿// KPPT評価関数の学習時用のコード
 // tanuki-さんの学習部のコードをかなり参考にさせていただきました。
 
-#include "../../shogi.h"
+#include "../../config.h"
 
 #if defined(EVAL_LEARN) && defined(EVAL_KPPT)
 
@@ -15,6 +15,7 @@
 #include "../../evaluate.h"
 #include "../../position.h"
 #include "../../misc.h"
+#include "../../usi.h"
 
 #include "../evaluate_io.h"
 #include "../evaluate_common.h"
@@ -363,7 +364,7 @@ namespace Eval
 			// 別にそれは構わない。なければ作って欲しいだけ。
 			// また、EvalSaveDirまでのフォルダは掘ってあるものとする。
 
-			MKDIR(eval_dir);
+			Dependency::mkdir(eval_dir);
 
 			// EvalIOを利用して評価関数ファイルに書き込む。
 			// 読み込みのときのinputとoutputとを入れ替えるとファイルに書き込める。EvalIo::eval_convert()マジ優秀。

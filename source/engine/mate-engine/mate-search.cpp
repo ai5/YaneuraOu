@@ -1,10 +1,10 @@
-﻿#include "../../shogi.h"
-#ifdef MATE_ENGINE
+﻿#include "../../config.h"
+#if defined(MATE_ENGINE)
 
 #include <unordered_set>
+#include <cstring>	// std::memset()
 
 #include "../../extra/all.h"
-#include "mate-search.h" 
 
 using namespace std;
 using namespace Search;
@@ -155,6 +155,11 @@ namespace MateEngine
 			Release();
 		}
 
+		// 置換表のサイズ(メモリクリアするときに必要。単位はbytes。
+		size_t Size() const {
+			return sizeof(Cluster) * num_clusters;
+		}
+
 		// 指定したKeyのTTEntryを返す。見つからなければ初期化された新規のTTEntryを返す。
 		TTEntry& LookUp(Key key, Color root_color) {
 			auto& entries = tt[key & clusters_mask];
@@ -223,7 +228,17 @@ namespace MateEngine
 			Release();
 
 			// tt_rawをCacheLineSizeにalignしたものがtt。
+
+			// callocでゼロクリアしているが、実際には、Windows10以降、物理メモリの割当てはOSにより遅延される。
+			// 本当に物理メモリを割り当てたいならば、実際にmemset()でゼロクリアすべきであり、
+			// トーナメントモード用のビルドではこれを行っている。
+
+#if defined(FOR_TOURNAMENT)
+			tt_raw = std::malloc(new_num_clusters * sizeof(Cluster) + CacheLineSize);
+#else
 			tt_raw = std::calloc(new_num_clusters * sizeof(Cluster) + CacheLineSize, 1);
+#endif
+
 			tt = (Cluster*)((uintptr_t(tt_raw) + CacheLineSize - 1) & ~(CacheLineSize - 1));
 
 			clusters_mask = num_clusters - 1;
@@ -325,11 +340,22 @@ namespace MateEngine
 		// go mate infiniteの場合、Limits.mateにはINT32MAXが代入されている点に注意する
 		if (Limits.mate != INT32_MAX && nodes_searched % 4096 == 0) {
 			auto elapsed_ms = Time.elapsed_from_ponderhit();
-			if (elapsed_ms > Limits.mate) {
+			if (elapsed_ms > Limits.mate)
+			{
 				timeup = true;
 				Threads.stop = true;
 				return;
 			}
+		}
+
+		// 探索ノード数のチェック。
+		// 探索をマルチスレッドでやっていないので、nodes_searchedを求めるコストがなく、
+		// 毎回チェックしてもどうということはないはず。
+		if (Limits.nodes != 0 && nodes_searched >= (uint64_t)Limits.nodes)
+		{
+			timeup = true;
+			Threads.stop = true;
+			return;
 		}
 
 		auto& entry = transposition_table.LookUp(n, root_color);
@@ -500,7 +526,7 @@ namespace MateEngine
 			//   thpn child = thpn - pn(n) + pn(n1);
 			//   thdn child = min(thdn, dn(n2) + 1);
 			// }
-			Move best_move;
+			Move best_move = MOVE_NONE; // gccで初期化していないという警告がでるのでその回避
 			int thpn_child;
 			int thdn_child;
 			if (or_node) {
@@ -728,7 +754,9 @@ namespace MateEngine
 	void dfpn(Position& r) {
 		Threads.stop = false;
 
-		transposition_table.Resize();
+//		transposition_table.Resize();
+		// "isready"に対して処理しないといけないのでsearch::clear()で行う。
+
 		// キャッシュの世代を進める
 		transposition_table.NewSearch();
 
@@ -797,7 +825,7 @@ namespace MateEngine
 		// "ponderhit"が送られてきたらThreads.ponder == 0になるので、それを待つ。(stopOnPonderhitは用いない)
 		//    また、このときThreads.stop == trueにはならない。(この点、Stockfishとは異なる。)
 		// "go infinite"に対してはstopが送られてくるまで待つ。
-		while (!Threads.stop && (Threads.ponder || Limits.infinite))
+		while (!Threads.stop && (Threads.main()->ponder || Limits.infinite))
 			sleep(1);
 		//	こちらの思考は終わっているわけだから、ある程度細かく待っても問題ない。
 		// (思考のためには計算資源を使っていないので。)
@@ -822,6 +850,8 @@ namespace MateEngine
 
 		Threads.stop = true;
 	}
+
+
 }
 
 void USI::extra_option(USI::OptionsMap & o) {
@@ -831,11 +861,23 @@ void USI::extra_option(USI::OptionsMap & o) {
 // --- Search
 
 void Search::init() {}
-void Search::clear() { }
-void MainThread::think() {
-	Thread::search();
+void Search::clear()
+{
+	MateEngine::transposition_table.Resize();
+
+	// トーナメントモードであるならゼロクリアして物理メモリを割り当てておく。
+#if defined(FOR_TOURNAMENT)
+
+	// 進捗を表示しながら並列化してゼロクリア
+	memclear(MateEngine::transposition_table.tt , MateEngine::transposition_table.Size());
+
+#endif
+
 }
-void Thread::search() {
+void MainThread::search() { Thread::search(); }
+
+void Thread::search()
+{
 	// 通常のgoコマンドで呼ばれたときは、resignを返す。
 	// 詰み用のworkerでそれだと支障がある場合は適宜変更する。
 	if (Search::Limits.mate == 0) {

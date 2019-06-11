@@ -1,4 +1,4 @@
-﻿#include "move_picker.h"
+﻿#include "movepick.h"
 #include "thread.h"
 
 namespace {
@@ -10,11 +10,11 @@ namespace {
 // 被害が小さいように、LVA(価値の低い駒)を動かして取るほうが優先されたほうが良いので駒に価値の低い順に番号をつける。そのためのテーブル。
 // ※ LVA = Least Valuable Aggressor。cf.MVV-LVA
 
-static const Value LVATable[PIECE_WHITE] = {
+constexpr Value LVATable[PIECE_WHITE] = {
   Value(0), Value(1) /*歩*/, Value(2)/*香*/, Value(3)/*桂*/, Value(4)/*銀*/, Value(7)/*角*/, Value(8)/*飛*/, Value(6)/*金*/,
   Value(10000)/*王*/, Value(5)/*と*/, Value(5)/*杏*/, Value(5)/*圭*/, Value(5)/*全*/, Value(9)/*馬*/, Value(10)/*龍*/,Value(11)/*成金*/
 };
-inline Value LVA(const Piece pt) { return LVATable[pt]; }
+constexpr Value LVA(const Piece pt) { return LVATable[pt]; }
   
 // -----------------------
 //   指し手オーダリング
@@ -66,9 +66,6 @@ enum Stages: int {
 	QCHECK_						// 王手となる指し手(- 歩を成る指し手)を返すフェーズ
 };
 
-// select()関数ですべての指し手を選択するためのhelper filter
-const auto Any = []() { return true; };
-
 // -----------------------
 //   partial insertion sort
 // -----------------------
@@ -89,6 +86,26 @@ void partial_insertion_sort(ExtMove* begin, ExtMove* end, int limit) {
 			*q = tmp;
 		}
 }
+
+// 合法手か判定する
+// ※　やねうら王独自追加。
+// 歩の不成を生成するモードが必要なのでこの部分をwrapしておく必要があった。
+bool pseudo_legal(const Position& pos, Move ttm)
+{
+#if defined(FOR_TOURNAMENT) 
+
+	// トーナメントモードなら、歩の不成は生成しない
+	return pos.pseudo_legal_s<false>(ttm);
+
+#else
+
+	// トーナメントモードでないなら、歩の不成を生成するかは、Options["GenerateAllLegalMoves"]に依存する。
+	return Search::Limits.generate_all_legal_moves ? pos.pseudo_legal_s<true>(ttm) : pos.pseudo_legal_s<false>(ttm);
+
+#endif
+}
+
+
 } // end of namespace
 
 // 指し手オーダリング器
@@ -96,7 +113,7 @@ void partial_insertion_sort(ExtMove* begin, ExtMove* end, int limit) {
 // 通常探索から呼び出されるとき用。
 MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHistory* mh,
 	const CapturePieceToHistory* cph , const PieceToHistory** ch, Move cm, Move* killers)
-	: pos(p), mainHistory(mh), captureHistory(cph) , contHistory(ch),
+	: pos(p), mainHistory(mh), captureHistory(cph) , continuationHistory(ch),
 	refutations{ { killers[0], 0 },{ killers[1], 0 },{ cm, 0 } }, depth(d)
 {
 	// 通常探索から呼び出されているので残り深さはゼロより大きい。
@@ -107,7 +124,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 	stage = pos.in_check() ? EVASION_TT : MAIN_TT;
 
 	// 置換表の指し手があるならそれを最初に返す。ただしpseudo_legalでなければならない。
-	ttMove = ttm && pos.pseudo_legal_s<false>(ttm) ? ttm : MOVE_NONE;
+	ttMove = ttm && pseudo_legal(pos,ttm) ? ttm : MOVE_NONE;
 
 	// 置換表の指し手がないなら、次のstageから開始する。
 	stage += (ttMove == MOVE_NONE);
@@ -127,7 +144,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 
 	// 歩の不成、香の2段目への不成、大駒の不成を除外
 	ttMove =   ttm
-			&& pos.pseudo_legal_s<false>(ttm)
+			&& pseudo_legal(pos, ttm)
 			&& (depth > DEPTH_QS_RECAPTURES || to_sq(ttm) == recaptureSquare) ? ttm : MOVE_NONE;
 
 	// 置換表の指し手がないなら、次のstageから開始する。
@@ -146,7 +163,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th , const CapturePiec
 	// ProbCutにおいて、SEEが与えられたthresholdの値以上の指し手のみ生成する。
 	// (置換表の指しても、この条件を満たさなければならない)
 	ttMove = ttm
-		&& pos.pseudo_legal_s<false>(ttm)
+		&& pseudo_legal(pos, ttm)
 		&& pos.capture(ttm)
 		&& pos.see_ge(ttm, threshold) ? ttm : MOVE_NONE;
 
@@ -185,9 +202,9 @@ void MovePicker::score()
 			Square movedSq = to_sq(m);
 
 			m.value = (*mainHistory)[from_to(m)][pos.side_to_move()]
-					+ (*contHistory[0])[movedSq][movedPiece]
-					+ (*contHistory[1])[movedSq][movedPiece]
-					+ (*contHistory[3])[movedSq][movedPiece];
+					+ (*continuationHistory[0])[movedSq][movedPiece]
+					+ (*continuationHistory[1])[movedSq][movedPiece]
+					+ (*continuationHistory[3])[movedSq][movedPiece];
 		}
 		else // Type == EVASIONS
 		{
@@ -270,7 +287,12 @@ top:
 	case PROBCUT_INIT:
 	case QCAPTURE_INIT:
 		cur = endBadCaptures = moves;
+
+#if defined(FOR_TOURNAMENT)
 		endMoves = generateMoves<CAPTURES_PRO_PLUS>(pos, cur);
+#else
+		endMoves = Search::Limits.generate_all_legal_moves ? generateMoves<CAPTURES_PRO_PLUS_ALL>(pos, cur) : generateMoves<CAPTURES_PRO_PLUS>(pos, cur);
+#endif
 
 		// 駒を捕獲する指し手に対してオーダリングのためのスコアをつける
 		score<CAPTURES>();
@@ -311,7 +333,7 @@ top:
 		// pseudo_legalでない指し手以外に歩や大駒の不成なども除外
 		if (select<Next>([&]() { return    move != MOVE_NONE
 										&& !pos.capture_or_pawn_promotion(move)
-										&&  pos.pseudo_legal_s<false>(move); }))
+										&&  pseudo_legal(pos,move); }))
 			return move;
 
 		++stage;
@@ -320,7 +342,12 @@ top:
 	// 駒を捕獲しない指し手を生成してオーダリング
 	case QUIET_INIT:
 		cur = endBadCaptures;
+
+#if defined(FOR_TOURNAMENT) 
 		endMoves = generateMoves<NON_CAPTURES_PRO_MINUS>(pos, cur);
+#else
+		endMoves = Search::Limits.generate_all_legal_moves ? generateMoves<NON_CAPTURES_PRO_MINUS_ALL>(pos, cur) : generateMoves<NON_CAPTURES_PRO_MINUS>(pos, cur);
+#endif
 
 		// 駒を捕獲しない指し手に対してオーダリングのためのスコアをつける
 		score<QUIETS>();
@@ -353,13 +380,17 @@ top:
 
 	// see()が負の指し手を返す。
 	case BAD_CAPTURE:
-		return select<Next>(Any);
+		return select<Next>([]() { return true; });
 
 	// 王手回避手の生成
 	case EVASION_INIT:
 		cur = moves;
-		endMoves = generateMoves<EVASIONS>(pos, cur);
 
+#if defined(FOR_TOURNAMENT) 
+		endMoves = generateMoves<EVASIONS>(pos, cur);
+#else
+		endMoves = Search::Limits.generate_all_legal_moves ? generateMoves<EVASIONS_ALL>(pos, cur) : generateMoves<EVASIONS>(pos, cur);
+#endif
 		// 王手を回避する指し手に対してオーダリングのためのスコアをつける
 		score<EVASIONS>();
 
@@ -369,7 +400,7 @@ top:
 	// 王手回避の指し手を返す
 	case EVASION_:
 		// そんなに数は多くないはずだから、オーダリングがベストのスコアのものを選択する
-		return select<Best>(Any);
+		return select<Best>([](){ return true; });
 
 	// PROBCUTの指し手を返す
 	case PROBCUT_:
@@ -393,17 +424,23 @@ top:
 
 	// 王手となる指し手の生成
 	case QCHECK_INIT:
-		// CAPTURES_PRO_PLUSで生成していたので、駒を取らない王手の指し手生成(QUIET_CHECKS) - 歩の成る指し手の除外 が必要。
+		// この前のフェーズでCAPTURES_PRO_PLUSで生成していたので、駒を取らない王手の指し手生成(QUIET_CHECKS) - 歩の成る指し手の除外 が必要。
+		// (歩の成る指し手は王手であろうとすでに生成して試したあとである)
 		// QUIET_CHECKS_PRO_MINUSがあれば良いのだが、実装が難しいので、QUIET_CHECKSで生成して、このあとQCHECK_で歩の成る指し手を除外する。
 		cur = moves;
+
+#if defined(FOR_TOURNAMENT) 
 		endMoves = generateMoves<QUIET_CHECKS>(pos, cur);
+#else
+		endMoves = Search::Limits.generate_all_legal_moves ? generateMoves<QUIET_CHECKS_ALL>(pos, cur) : generateMoves<QUIET_CHECKS>(pos, cur);
+#endif
 
 		++stage;
 		/* fallthrough */
 
 	// 王手になる指し手を一手ずつ返すフェーズ
 	case QCHECK_:
-		// return select<Next>(Any);
+		// return select<Next>([](){ return true; });
 		return select<Next>([&]() { return !pos.pawn_promotion(move); });
 
 	default:

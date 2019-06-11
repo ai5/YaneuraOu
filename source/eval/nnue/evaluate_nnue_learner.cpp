@@ -1,15 +1,17 @@
 ﻿// NNUE評価関数の学習時用のコード
 
-#include "../../shogi.h"
+#include "../../config.h"
 
 #if defined(EVAL_LEARN) && defined(EVAL_NNUE)
 
 #include <random>
+#include <fstream>
 
 #include "../../learn/learn.h"
 #include "../../learn/learning_tools.h"
 
 #include "../../position.h"
+#include "../../usi.h"
 #include "../../misc.h"
 
 #include "../evaluate_common.h"
@@ -206,7 +208,7 @@ void save_eval(std::string dir_name) {
   // すでにこのフォルダがあるならmkdir()に失敗するが、
   // 別にそれは構わない。なければ作って欲しいだけ。
   // また、EvalSaveDirまでのフォルダは掘ってあるものとする。
-  MKDIR(eval_dir);
+  Dependency::mkdir(eval_dir);
 
   if (Options["SkipLoadingEval"] && NNUE::trainer) {
     NNUE::SendMessages({{"clear_unobserved_feature_weights"}});

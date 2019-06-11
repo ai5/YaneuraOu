@@ -1,10 +1,6 @@
-﻿#include <sstream>
-#include <iostream>
-
-#include "shogi.h"
-#include "position.h"
+﻿#include "types.h"
+#include "usi.h"
 #include "search.h"
-#include "thread.h"
 #include "tt.h"
 
 // ----------------------------------------
@@ -17,11 +13,12 @@ const char* USI_PIECE = ". P L N S B R G K +P+L+N+S+B+R+G+.p l n s b r g k +p+l+
 //    tables
 // ----------------------------------------
 
-// これはshogi.hで定義しているのでLONG_EFFECT_LIBRARYがdefineされていないときにも必要。
-namespace Effect8 { Directions direc_table[SQ_NB_PLUS1][SQ_NB_PLUS1]; }
+// これはtypes.hで定義しているのでLONG_EFFECT_LIBRARYがdefineされていないときにも必要。
+namespace Effect8 {
+	Directions direc_table[SQ_NB_PLUS1][SQ_NB_PLUS1];
+}
 
 std::string PieceToCharBW(" PLNSBRGK        plnsbrgk");
-
 
 // ----------------------------------------
 // operator<<(std::ostream& os,...)とpretty() 
@@ -45,6 +42,8 @@ std::string pretty(Move m, Piece movedPieceType)
 	else
 		return pretty(move_to(m)) + pretty2(movedPieceType) + (is_promote(m) ? (pretty_jp ? "成" : "+") : "") + "[" + pretty(move_from(m)) + "]";
 }
+
+std::string to_usi_string(Move m){ return USI::move(m); }
 
 std::ostream& operator<<(std::ostream& os, Color c) { os << ((c == BLACK) ? (pretty_jp ? "先手" : "BLACK") : (pretty_jp ? "後手" : "WHITE")); return os; }
 
@@ -81,46 +80,25 @@ std::ostream& operator<<(std::ostream& os, HandKind hk)
 	return os;
 }
 
-std::string to_usi_string(Move m)
+// RepetitionStateを文字列化する。PVの出力のときにUSI拡張として出力するのに用いる。
+std::string to_usi_string(RepetitionState rs)
 {
-	std::stringstream ss;
-	if (!is_ok(m))
-	{
-		ss << ((m == MOVE_RESIGN) ? "resign" :
-			   (m == MOVE_WIN)    ? "win"    :
-			   (m == MOVE_NULL)   ? "null"   :
-			   (m == MOVE_NONE)   ? "none"   :
-			"");
-	}
-	else if (is_drop(m))
-	{
-		ss << move_dropped_piece(m);
-		ss << '*';
-		ss << move_to(m);
-	}
-	else {
-		ss << move_from(m);
-		ss << move_to(m);
-		if (is_promote(m))
-			ss << '+';
-	}
-	return ss.str();
-}
-
-// 拡張USIプロトコルにおいてPVの出力に用いる。
-std::ostream& operator<<(std::ostream& os, RepetitionState rs)
-{
-	os << ((rs == REPETITION_NONE) ? "rep_none" : // これはデバッグ用であり、実際には出力はしない。
-		   (rs == REPETITION_WIN ) ? "rep_win" :
+	return ((rs == REPETITION_NONE) ? "rep_none" : // これはデバッグ用であり、実際には出力はしない。
+		(rs == REPETITION_WIN) ? "rep_win" :
 		   (rs == REPETITION_LOSE) ? "rep_lose" :
 		   (rs == REPETITION_DRAW) ? "rep_draw" :
 		   (rs == REPETITION_SUPERIOR) ? "rep_sup" :
 		   (rs == REPETITION_INFERIOR) ? "rep_inf" :
 		"")
 		;
-	return os;
 }
 
+// 拡張USIプロトコルにおいてPVの出力に用いる。
+std::ostream& operator<<(std::ostream& os, RepetitionState rs)
+{
+	os << to_usi_string(rs);
+	return os;
+}
 
 // ----------------------------------------
 // 探索用のglobalな変数
@@ -182,26 +160,3 @@ Value drawValueTable[REPETITION_NB][COLOR_NB] =
 GlobalOptions_ GlobalOptions;
 #endif
 
-// ----------------------------------------
-//  main()
-// ----------------------------------------
-
-int main(int argc, char* argv[])
-{
-	// --- 全体的な初期化
-	USI::init(Options);
-	Bitboards::init();
-	Position::init();
-	Search::init();
-	Threads.set(Options["Threads"]);
-	TT.resize(Options["Hash"]);
-	Eval::init();
-
-	// USIコマンドの応答部
-	USI::loop(argc, argv);
-
-	// 生成して、待機させていたスレッドの停止
-	Threads.set(0);
-
-	return 0;
-}
