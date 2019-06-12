@@ -334,7 +334,7 @@
 // 学習絡みのオプション
 #define USE_SFEN_PACKER
 // 学習機能を有効にするオプション。
-#define EVAL_LEARN
+// #define EVAL_LEARN
 
 // 学習のためにOpenBLASを使う
 // "../openblas/lib/libopenblas.dll.a"をlibとして追加すること。

@@ -48,7 +48,7 @@ namespace USI {
 		o["MultiPV"] << Option(1, 1, 800);
 
 		// 弱くするために調整する。20なら手加減なし。0が最弱。
-		o["SkillLevel"] << Option(20, 0, 20);
+		o["USI_SkillLevel"] << Option(20, 0, 20);
 #else
 		o["Hash"] << Option(4096, 1, MaxHashMB);
 #endif

@@ -583,7 +583,7 @@ SKIP_SEARCH:;
 	// 並列して探索させていたスレッドのうち、ベストのスレッドの結果を選出する。
 	if (Options["MultiPV"] == 1
 		&& !Limits.depth
-		&& !Skill((int)Options["SkillLevel"]).enabled()
+		&& !Skill((int)Options["USI_SkillLevel"]).enabled()
 		//&& rootMoves[0].pv[0] != MOVE_NONE // やねうら王では投了の局面でMOVE_NONEを突っ込まないのでこのチェックは不要。
 		&& !search_skipped                   // 定跡などの指し手を指させるためのこのチェックが必要。
 		)
@@ -713,7 +713,7 @@ void Thread::search()
 	size_t multiPV = Options["MultiPV"];
 
 	// SkillLevelの実装
-	Skill skill((int)Options["SkillLevel"]);
+	Skill skill((int)Options["USI_SkillLevel"]);
 
 	// 強さの手加減が有効であるとき、MultiPVを有効にして、その指し手のなかから舞台裏で指し手を探す。
 	// ※　SkillLevelが有効(設定された値が20未満)のときは、MultiPV = 4で探索。

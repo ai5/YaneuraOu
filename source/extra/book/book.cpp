@@ -1019,7 +1019,7 @@ namespace Book
 		if (pure_book_name == "no_book")
 			return PosMoveListPtr();
 
-		if (Options["OwnBook"] == false)
+		if (!Options["OwnBook"])
 		{
 			return PosMoveListPtr();
 		}
