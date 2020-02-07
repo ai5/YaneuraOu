@@ -143,7 +143,7 @@ struct StateInfo
 // setup moves("position"コマンドで設定される、現局面までの指し手)に沿った局面の状態を追跡するためのStateInfoのlist。
 // 千日手の判定のためにこれが必要。std::dequeを使っているのは、StateInfoがポインターを内包しているので、resizeに対して
 // 無効化されないように。
-typedef std::deque<StateInfo, AlignedAllocator<StateInfo>> StateList;
+typedef std::deque<StateInfo> StateList;
 typedef std::unique_ptr<StateList> StateListPtr;
 
 // --------------------
@@ -197,13 +197,16 @@ public:
 	// この局面クラスを用いて探索しているスレッドを返す。 
 	Thread* this_thread() const { return thisThread; }
 
-	// 盤面上の駒を返す
+	// 盤面上の駒を返す。
 	Piece piece_on(Square sq) const { ASSERT_LV3(sq <= SQ_NB); return board[sq]; }
 
-	// c側の手駒を返す
+	// ある升に駒がないならtrueを返す。
+	bool empty(Square sq) const { return piece_on(sq) == NO_PIECE; }
+
+	// c側の手駒を返す。
 	Hand hand_of(Color c) const { ASSERT_LV3(is_ok(c));  return hand[c]; }
 
-	// c側の玉の位置を返す
+	// c側の玉の位置を返す。
 	FORCE_INLINE Square king_square(Color c) const { ASSERT_LV3(is_ok(c)); return kingSquare[c]; }
 
 	// 保持しているデータに矛盾がないかテストする。
@@ -256,8 +259,16 @@ public:
 	// そこまでの局面と同一局面であるかを、局面を遡って調べる。
 	// plies_from_root : rootからの手数。ss->plyを渡すこと。
 	// 　※　rootとは、探索開始局面であり、そこまでの経路(手順)がある場合、そこよりさらに遡って調べる。
-	// rep_ply         : 遡る手数。デフォルトでは32手。あまり大きくすると速度低下を招く。
-	RepetitionState is_repetition(int plies_from_root , int rep_ply = 32) const;
+	// →　これ無駄なのでやめた。(V4.87)[2019/06/09]
+	// rep_ply         : 遡る手数。デフォルトでは16手。あまり大きくすると速度低下を招く。
+	RepetitionState is_repetition(int rep_ply = 16) const;
+
+#if defined(CUCKOO)
+	// この局面から以前と同一局面に到達する指し手があるか。
+	// plies_from_root : rootからの手数。ss->plyを渡すこと。
+	// rep_ply         : 遡る手数。デフォルトでは16手。あまり大きくすると速度低下を招く。
+	bool has_game_cycle(int plies_from_root , int rep_ply = 16) const;
+#endif
 
 	// --- Bitboard
 
@@ -311,14 +322,6 @@ public:
 
 	// 現局面で駒Ptを動かしたときに王手となる升を表現するBitboard
 	Bitboard check_squares(Piece pt) const { ASSERT_LV3(pt!= NO_PIECE && pt < PIECE_WHITE); return st->checkSquares[pt]; }
-
-	// 以下の2つは後方互換性のために残してある。わりと便利なような？
-
-	// 移動させると(相手側＝非手番側)の玉に対して空き王手となる候補の(手番側)駒のbitboard。
-	Bitboard discovered_check_candidates() const { return blockers_for_king(~sideToMove) & pieces(sideToMove); }
-
-	// ピンされているc側の駒。下手な方向に移動させるとc側の玉が素抜かれる。
-	Bitboard pinned_pieces(Color c) const { return blockers_for_king(c) & pieces(c); }
 
 	// --- 利き
 
@@ -460,7 +463,8 @@ public:
 
 
 	// 指し手mで王手になるかを判定する。
-	// 指し手mはpseudo-legal(擬似合法)の指し手であるものとする。
+	// 前提条件 : 指し手mはpseudo-legal(擬似合法)の指し手であるものとする。
+	// (つまり、mのfromにある駒は自駒であることは確定しているものとする。)
 	bool gives_check(Move m) const;
 
 	// 手番側の駒をfromからtoに移動させると素抜きに遭うのか？
@@ -519,7 +523,7 @@ public:
 	bool capture(Move m) const { return !is_drop(m) && piece_on(move_to(m)) != NO_PIECE; }
 
 	// --- 1手詰め判定
-#ifdef USE_MATE_1PLY
+#if defined(USE_MATE_1PLY)
   // 現局面で1手詰めであるかを判定する。1手詰めであればその指し手を返す。
   // ただし1手詰めであれば確実に詰ませられるわけではなく、簡単に判定できそうな近接王手による
   // 1手詰めのみを判定する。(要するに判定に漏れがある。)
@@ -539,15 +543,14 @@ public:
 #endif
 
 	// 入玉時の宣言勝ち
-#if defined (USE_ENTERING_KING_WIN)
   // Search::Limits.enteringKingRuleに基いて、宣言勝ちを行なう。
   // 条件を満たしているとき、MOVE_WINや、玉を移動する指し手(トライルール時)が返る。さもなくば、MOVE_NONEが返る。
   // mate1ply()から内部的に呼び出す。(そうするとついでに処理出来て良い)
+	// ※　トライルールのときに返ってくるのは16bitのmoveなので注意。
 	Move DeclarationWin() const;
-#endif
 
 	// -- sfen化ヘルパ
-#ifdef USE_SFEN_PACKER
+#if defined(USE_SFEN_PACKER)
   // packされたsfenを得る。引数に指定したバッファに返す。
   // gamePlyはpackに含めない。
 	void sfen_pack(PackedSfen& sfen);
@@ -567,7 +570,7 @@ public:
 #endif
 
 	// -- 利き
-#ifdef LONG_EFFECT_LIBRARY
+#if defined(LONG_EFFECT_LIBRARY)
 
   // 各升の利きの数
 	LongEffect::ByteBoard board_effect[COLOR_NB];

@@ -2,6 +2,137 @@
 やねうら王 更新履歴
 
 
+■　2019/06/26 V4.88
+
+
+- V4.88にバージョンナンバーを上げる。
+
+
+- makebook extend_treeで"sfen"局面を読み込んだ時に"moves"がついていないなら"moves"を付与する。
+
+
+■　2019/06/25
+
+
+- engine_options.txtでオプションを読み込んだときにハンドラを壊していたの修正
+
+
+- Stockfish 20190625分まで反映
+
+
+- makebook build_treeコマンド(テラショック定跡生成コマンド)、駒落ちの各初期局面もroot局面にするように変更。
+  - これで駒落ちの定跡もビルドできるようになった。
+- makebook extend_treeコマンド、"startpos moves .."形式だけではなく"sfen ..."形式もサポートする。
+
+
+- TOURNAMENT用のビルド、EvalHashの初期値が1024になっていなかったの修正。
+
+
+■　2019/06/24
+
+
+- Makefile、すべてのCPU用のすべてのビルドターゲットをビルドできるように修正する。
+- 一つ前のcommitによってclangでコンパイルエラーになっていたの修正。
+
+
+- movepick.cppのQUIET_INITでskipQuietのときには指し手を生成しない。
+  cf. http://yaneuraou.yaneu.com/2019/06/24/%e5%b0%86%e6%a3%8b%e3%82%bd%e3%83%95%e3%83%88%e9%96%8b%e7%99%ba%e8%80%85%e3%81%8cstockfish%e3%81%ab%e8%b2%a2%e7%8c%ae%e3%81%99%e3%82%8b%e6%97%a5/
+
+
+- makebookコマンドでオプションのBookFileで指定されている定跡は読み込まないように改善。
+- makebook build_treeコマンドで同一局面の場合、gamePlyが最小となる局面についての情報を書き出すように修正。
+
+
+■　2019/06/23
+
+
+- engine_options.txtを読み込んでいるのにソースコードのコメントでengine_option.txtと書いていた箇所修正。
+
+
+- EnteringKingRuleがengine_options.txtで反映しなかったの修正
+- 入玉ルールまわりの処理、リファクタリング
+- extra/entering_king_rule.cpp →　position.cppに吸収
+- engine_options.txtでoverrideしたときに、Optionのhandlerを呼び出すように修正
+
+
+■　2019/06/22
+
+
+- "engine_options.txt"側でBookFileを指定できなかったbug修正。
+
+
+- ニコニコ生放送用にmultipvで出力しないオプション追加。
+
+
+- 定跡ファイルの読み込み中にinfo stringでその旨を出力する。
+
+
+■　2019/06/17
+
+
+- Positionクラス、千日手の処理変更。
+  - 以前の方法の処理に戻す。
+
+
+- Android用Makefile , AVX512対応の用意など。  Mizerさんのプルリク(#98)
+
+
+
+■　2019/06/15 V4.87
+
+
+- include忘れ修正
+手元の環境だとコンパイル通るのなんで…。
+
+
+- V4.87にバージョンナンバーを上げる。
+
+
+- EvalHashオプション追加
+
+
+- Position::pseudo_legal_s()の不要なチェックを削除 (#97)  Aperyの平岡さんのプルリク(#97)
+
+
+■　2019/06/10
+
+
+- make時のエンジン表示名の指定に対応
+
+
+- USI_Ponder受けつけてなかったの修正
+- benchコマンドがASSERTに引っかかっていたの修正
+
+
+- ASSERT有効にしたときにコンパイルが通らなくなっていたの修正。
+
+
+■　2019/06/09
+
+
+- ENABLE_OUTPUT_GAME_RESULTまわり、コード整理
+
+
+- Position::discovered_check_candidates(),pinned_pieces()廃止。
+
+
+- 計測資料、記述追加、readme.mdに定跡生成手順などの補足
+
+
+- cuckoo配列の初期化コード追加、Position::has_game_cycle()実装など。
+
+
+■　2019/06/07
+
+
+- 定跡DBの書き出し、必ずsortするように仕様変更。
+
+
+■　2019/06/03
+
+
+- Makefile整理
+- プロジェクトファイル整理
 
 
 ■　2019/06/02
@@ -501,7 +632,7 @@ USI2.0の仕様より。
 ■　2018/07/27
 
 
-- 起動時に、"engine_option.txt"を読み込み、Optionsに反映するように。
+- 起動時に、"engine_options.txt"を読み込み、Optionsに反映するように。
 	- エンジンオプションのデフォルト値の変更について、解説.txtに追記
 
 

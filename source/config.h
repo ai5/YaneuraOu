@@ -8,7 +8,7 @@
 
 // 思考エンジンのバージョンとしてUSIプロトコルの"usi"コマンドに応答するときの文字列。
 // ただし、この値を数値として使用することがあるので数値化できる文字列にしておく必要がある。
-#define ENGINE_VERSION "4.86"
+#define ENGINE_VERSION "4.88"
 
 // --------------------
 //  思考エンジンの種類
@@ -20,7 +20,7 @@
 
 #if !defined (USE_MAKEFILE)
 
-#define YANEURAOU_2018_OTAFUKU_ENGINE    // やねうら王2018 with お多福Lab。(開発中2018/01/01～)
+#define YANEURAOU_ENGINE_NNUE    // やねうら王2018 with お多福Lab。(開発中2018/01/01～)
 //#define MATE_ENGINE                      // 詰め将棋solverとしてリリースする場合。(開発中2017/05/06～)
 //#define USER_ENGINE                      // ユーザーの思考エンジン
 
@@ -63,7 +63,7 @@
 
 // Makefileを使ってbuildするときは、
 // $ make avx2
-// のようにしてビルドすれば自動的にAVX2用がビルドされます。
+// のようにしてビルドすれば自動的にAVX2用実行ファイルがビルドされます。
 
 #endif
 
@@ -139,8 +139,6 @@
 // #define EVAL_PPET      // ×  技巧型 2駒+利き+手番(実装予定なし)
 // #define EVAL_KKPPT     // ○  KKPP型 4駒関係 手番あり。(55将棋、56将棋でも使えそう)※3
 // #define EVAL_KKPP_KKPT // ○  KKPP型 4駒関係 手番はKK,KKPTにのみあり。※3
-// #define EVAL_NABLA     // ○  ∇(ナブラ) 評価関数(現状、非公開)
-// #define EVAL_HELICES   // ？  螺旋評価関数
 
 // ※1 : KPP_PPTは、差分計算が面倒で割に合わないことが判明したのでこれを使うぐらいならKPP_KKPTで十分だという結論。
 // ※2 : 実装したけどいまひとつだったので差分計算実装せず。そのため遅すぎて、実質使い物にならない。ソースコードの参考用。
@@ -229,10 +227,6 @@
 // USIプロトコルでgameoverコマンドが送られてきたときに gameover_handler()を呼び出す。
 // #define USE_GAMEOVER_HANDLER
 
-// EVAL_HASHで使用するメモリとして大きなメモリを確保するか。
-// これをONすると数%高速化する代わりに、メモリ使用量が1GBほど増える。
-// #define USE_LARGE_EVAL_HASH
-
 // GlobalOptionという、EVAL_HASHを有効/無効を切り替えたり、置換表の有効/無効を切り替えたりする
 // オプションのための変数が使えるようになる。スピードが1%ぐらい遅くなるので大会用のビルドではオフを推奨。
 // #define USE_GLOBAL_OPTIONS
@@ -250,35 +244,24 @@
 // cf. 128 GB TT size limitation : https://github.com/official-stockfish/Stockfish/issues/1349
 // #define USE_HUGE_HASH
 
+// ニコニコ生放送の電王盤用
+// 電王盤はMultiPV非対応なので定跡を送るとき、"multipv"をつけずに1番目の候補手を送信する必要がある。
+// #define NICONICO
+
 // --------------------
 // release configurations
 // --------------------
 
 // --- 通常の思考エンジンとして実行ファイルを公開するとき用の設定集
 
-// やねうら王2018 with お多福ラボ
-#if defined(YANEURAOU_2018_OTAFUKU_ENGINE) || defined(YANEURAOU_2018_OTAFUKU_ENGINE_KPPT) || defined(YANEURAOU_2018_OTAFUKU_ENGINE_KPP_KKPT) || defined(YANEURAOU_2018_OTAFUKU_ENGINE_MATERIAL)
-#define ENGINE_NAME "YaneuraOu 2018 Otafuku"
-#if defined(YANEURAOU_2018_OTAFUKU_ENGINE)
-#define EVAL_KPPT
-//#define EVAL_KPP_KKPT
-#endif
-#if defined(YANEURAOU_2018_OTAFUKU_ENGINE_KPPT)
-#define EVAL_KPPT
-#endif
-#if defined(YANEURAOU_2018_OTAFUKU_ENGINE_KPP_KKPT)
-#define EVAL_KPP_KKPT
-#endif
-#if defined(YANEURAOU_2018_OTAFUKU_ENGINE_MATERIAL)
-#define EVAL_MATERIAL
-#endif
-#if !defined(YANEURAOU_2018_OTAFUKU_ENGINE)
-#define YANEURAOU_2018_OTAFUKU_ENGINE
-#endif
+#if defined(YANEURAOU_ENGINE_KPPT) || defined(YANEURAOU_ENGINE_KPP_KKPT) || defined(YANEURAOU_ENGINE_NNUE) || defined(YANEURAOU_ENGINE_MATERIAL)
 
-#if !defined(YANEURAOU_2018_OTAFUKU_ENGINE_MATERIAL)
+#define ENGINE_NAME "YaneuraOu"
+
+// 探索部は通常のやねうら王エンジンを用いる。
+#define YANEURAOU_ENGINE
+
 #define USE_EVAL_HASH
-#endif
 #define USE_SEE
 #define USE_MATE_1PLY
 #define USE_ENTERING_KING_WIN
@@ -286,24 +269,23 @@
 #define KEEP_PIECE_IN_GENERATE_MOVES
 #define ONE_PLY_EQ_1
 
+// 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)
+#define USE_SHARED_MEMORY_IN_EVAL
+
+// 学習機能を有効にするオプション。
+#define EVAL_LEARN
+
 // デバッグ絡み
 //#define ASSERT_LV 3
 //#define USE_DEBUG_ASSERT
 
+
 #define ENABLE_TEST_CMD
 // 学習絡みのオプション
 #define USE_SFEN_PACKER
-// 学習機能を有効にするオプション。
-#if !defined(YANEURAOU_2018_OTAFUKU_ENGINE_MATERIAL)
-#define EVAL_LEARN
-#endif
 
 // 定跡生成絡み
 #define ENABLE_MAKEBOOK_CMD
-// 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)
-#if !defined(YANEURAOU_2018_OTAFUKU_ENGINE_MATERIAL)
-#define USE_SHARED_MEMORY_IN_EVAL
-#endif
 
 // パラメーターの自動調整絡み
 #define USE_GAMEOVER_HANDLER
@@ -311,50 +293,41 @@
 
 // GlobalOptionsは有効にしておく。
 #define USE_GLOBAL_OPTIONS
+
+// -- 各評価関数ごとのconfiguration
+
+#if defined(YANEURAOU_ENGINE_MATERIAL)
+#define EVAL_MATERIAL
+// 駒割のみの評価関数ではサポートされていない機能をundefする。
+#undef USE_EVAL_HASH
+#undef EVAL_LEARN
+#undef USE_SHARED_MEMORY_IN_EVAL
 #endif
 
-// NNUE評価関数を積んだtanuki-エンジン
-#if defined(YANEURAOU_2018_TNK_ENGINE)
-#define ENGINE_NAME "YaneuraOu 2018 T.N.K."
+#if defined(YANEURAOU_ENGINE_KPPT)
+#define EVAL_KPPT
+#endif
+
+#if defined(YANEURAOU_ENGINE_KPP_KKPT)
+#define EVAL_KPP_KKPT
+#endif
+
+#if defined(YANEURAOU_ENGINE_NNUE)
 #define EVAL_NNUE
-
-#define USE_EVAL_HASH
-#define USE_SEE
-#define USE_MATE_1PLY
-#define USE_ENTERING_KING_WIN
-#define USE_TIME_MANAGEMENT
-#define KEEP_PIECE_IN_GENERATE_MOVES
-#define ONE_PLY_EQ_1
-
-// デバッグ絡み
-//#define ASSERT_LV 3
-//#define USE_DEBUG_ASSERT
-
-#define ENABLE_TEST_CMD
-// 学習絡みのオプション
-#define USE_SFEN_PACKER
-// 学習機能を有効にするオプション。
-// #define EVAL_LEARN
+// 現状、評価関数のメモリ共有はNNUEではサポートされていない。
+#undef USE_SHARED_MEMORY_IN_EVAL
 
 // 学習のためにOpenBLASを使う
 // "../openblas/lib/libopenblas.dll.a"をlibとして追加すること。
 //#define USE_BLAS
 
-
-// 定跡生成絡み
-#define ENABLE_MAKEBOOK_CMD
-// 評価関数を共用して複数プロセス立ち上げたときのメモリを節約。(いまのところWindows限定)
-//#define USE_SHARED_MEMORY_IN_EVAL
-// パラメーターの自動調整絡み
-#define USE_GAMEOVER_HANDLER
-//#define LONG_EFFECT_LIBRARY
-
-// GlobalOptionsは有効にしておく。
-#define USE_GLOBAL_OPTIONS
-
-// 探索部はYANEURAOU_2018_OTAFUKU_ENGINEを使う。
-#define YANEURAOU_2018_OTAFUKU_ENGINE
+// KP256を用いる場合これをdefineする。
+// ※　これをdefineしていなければNNUE標準のhalfKP256になる。
+// #define EVAL_NNUE_KP256
 #endif
+
+#endif // defined(YANEURAOU_ENGINE_KPPT) || ...
+
 
 // --- 詰将棋エンジンとして実行ファイルを公開するとき用の設定集
 
@@ -387,7 +360,6 @@
 #undef ASSERT_LV
 #undef EVAL_LEARN
 #undef ENABLE_TEST_CMD
-#define USE_LARGE_EVAL_HASH
 #undef USE_GLOBAL_OPTIONS
 #undef KEEP_LAST_MOVE
 #endif
@@ -441,6 +413,9 @@ extern GlobalOptions_ GlobalOptions;
 #if !defined (USE_DEBUG_ASSERT)
 #define ASSERT(X) { if (!(X)) *(int*)1 = 0; }
 #else
+#include <iostream>
+#include <chrono>
+#include <thread>
 #define ASSERT(X) { if (!(X)) { std::cout << "\nError : ASSERT(" << #X << "), " << __FILE__ << "(" << __LINE__ << "): " << __func__ << std::endl; \
  std::this_thread::sleep_for(std::chrono::microseconds(3000)); *(int*)1 =0;} }
 #endif
@@ -534,7 +509,7 @@ constexpr bool Is64Bit = false;
 #endif
 
 #if defined(USE_AVX512)
-#define TARGET_CPU "AVX-512"
+#define TARGET_CPU "AVX512"
 #elif defined(USE_AVX2)
 #define TARGET_CPU "AVX2"
 #elif defined(USE_SSE42)
@@ -593,7 +568,9 @@ constexpr bool Is64Bit = false;
 #define EVAL_TYPE_NAME "KPPT"
 #elif defined(EVAL_KPP_KKPT)
 #define EVAL_TYPE_NAME "KPP_KKPT"
-#elif defined(EVAL_NNUE)
+#elif defined(EVAL_NNUE_KP256)
+#define EVAL_TYPE_NAME "NNUE KP256"
+#elif defined(EVAL_NNUE) // 標準NNUE halfKP256
 #define EVAL_TYPE_NAME "NNUE"
 #else
 #define EVAL_TYPE_NAME ""

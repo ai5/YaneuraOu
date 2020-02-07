@@ -16,7 +16,11 @@
 // ----------------------------
 
 #if defined(USE_AVX512)
-#include <zmmintrin.h>
+// immintrin.h から AVX512 関連の intrinsic は読み込まれる
+// intel: https://software.intel.com/sites/landingpage/IntrinsicsGuide/#techs=AVX_512
+// gcc: https://github.com/gcc-mirror/gcc/blob/master/gcc/config/i386/immintrin.h
+// clang: https://github.com/llvm-mirror/clang/blob/master/lib/Headers/immintrin.h
+#include <immintrin.h>
 #elif defined(USE_AVX2)
 #include <immintrin.h>
 #elif defined(USE_SSE42)
@@ -30,7 +34,7 @@
 #include <mm_malloc.h> // for _mm_alloc()
 #else
 #if defined (__GNUC__)
- #include <mm_malloc.h> // for _mm_alloc()
+#include <mm_malloc.h> // for _mm_alloc()
 #endif
 #endif
 
@@ -286,23 +290,6 @@ extern ymm ymm_one;   // all packed bytes are 1.
 
 extern void* aligned_malloc(size_t size, size_t align);
 static void aligned_free(void* ptr) { _mm_free(ptr); }
-
-// alignasを指定しているのにnewのときに無視される＆STLのコンテナがメモリ確保するときに無視するので、
-// そのために用いるカスタムアロケーター。
-template <typename T>
-class AlignedAllocator {
-public:
-	using value_type = T;
-
-	AlignedAllocator() {}
-	AlignedAllocator(const AlignedAllocator&) {}
-	AlignedAllocator(AlignedAllocator&&) {}
-
-	template <typename U> AlignedAllocator(const AlignedAllocator<U>&) {}
-
-	T* allocate(std::size_t n) { return (T*)aligned_malloc(n * sizeof(T), alignof(T)); }
-	void deallocate(T* p, std::size_t n) { aligned_free(p); }
-};
 
 // ----------------------------
 //    BSLR

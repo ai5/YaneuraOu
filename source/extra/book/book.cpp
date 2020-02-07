@@ -44,7 +44,7 @@ namespace Book
 	// ----------------------------------
 
 	// 局面を与えて、その局面で思考させるために、やねうら王2018が必要。
-#if defined(EVAL_LEARN) && defined(YANEURAOU_2018_OTAFUKU_ENGINE)
+#if defined(EVAL_LEARN) && defined(YANEURAOU_ENGINE)
 
 	struct MultiThinkBook : public MultiThink
 	{
@@ -151,13 +151,18 @@ namespace Book
 		// 定跡の変換
 		bool convert_from_apery = token == "convert_from_apery";
 		
-		// 評価関数を読み込まないとPositionのset()が出来ないので…。
+		// 評価関数を読み込まないとPositionのset()が出来ないのでis_ready()の呼び出しが必要。
+		// ただし、このときに定跡ファイルを読み込まれると読み込みに時間がかかって嫌なので一時的にno_bookに変更しておく。
+		auto original_book_file = Options["BookFile"];
+		Tools::Finally clean_up([&]() { Options["BookFile"] = original_book_file; });
+		Options["BookFile"] = string("no_book");
+
 		is_ready();
 
-#if !(defined(EVAL_LEARN) && defined(YANEURAOU_2018_OTAFUKU_ENGINE))
+#if !(defined(EVAL_LEARN) && defined(YANEURAOU_ENGINE))
 		if (from_thinking)
 		{
-			cout << "Error!:define EVAL_LEARN and YANEURAOU_2018_OTAFUKU_ENGINE" << endl;
+			cout << "Error!:define EVAL_LEARN and YANEURAOU_ENGINE" << endl;
 			return;
 		}
 #endif
@@ -193,7 +198,7 @@ namespace Book
 			}
 
 			// 定跡ファイル名
-			// Option["book_file"]ではなく、ここで指定したものが処理対象である。
+			// Option["BookFile"]ではなく、ここで指定したものが処理対象である。
 			string book_name;
 			is >> book_name;
 
@@ -385,7 +390,7 @@ namespace Book
 				vector<SfenAndBool> sf;		// 初手から(moves+0)手までのsfen文字列格納用
 
 				// これより長い棋譜、食わせない＆思考対象としないやろ
-				std::vector<StateInfo, AlignedAllocator<StateInfo>> states(1024);
+				std::vector<StateInfo> states(1024);
 
 				// 変数sfに解析対象局面としてpush_backする。
 				// ただし、
@@ -463,7 +468,7 @@ namespace Book
 			}
 			cout << "done." << endl;
 
-#if defined(EVAL_LEARN) && defined(YANEURAOU_2018_OTAFUKU_ENGINE)
+#if defined(EVAL_LEARN) && defined(YANEURAOU_ENGINE)
 
 			if (from_thinking)
 			{
@@ -561,10 +566,7 @@ namespace Book
 
 #endif
 
-			cout << "write " << book_name << " .. " << endl;
 			book.write_book(book_name);
-			cout << "..done." << endl;
-
 		}
 		else if (book_merge) {
 
@@ -642,9 +644,7 @@ namespace Book
 			cout << "same nodes = " << same_nodes
 				<< " , different nodes =  " << diffrent_nodes1 << " + " << diffrent_nodes2 << endl;
 
-			cout << "write..";
 			book[2].write_book(book_name[2]);
-			cout << "..done!" << endl;
 
 		}
 		else if (book_sort) {
@@ -655,9 +655,7 @@ namespace Book
 			cout << "book sort from " << book_src << " , write to " << book_dst << endl;
 			book.read_book(book_src);
 
-			cout << "write..";
-			book.write_book(book_dst, true);
-			cout << "..done!" << endl;
+			book.write_book(book_dst);
 
 		}
 		else if (convert_from_apery) {
@@ -667,10 +665,7 @@ namespace Book
 			cout << "convert apery book from " << book_src << " , write to " << book_dst << endl;
 			book.read_apery_book(book_src);
 
-			cout << "write..";
-			book.write_book(book_dst, true);
-			cout << "..done!" << endl;
-
+			book.write_book(book_dst);
 		}
 		else {
 			cout << "usage" << endl;
@@ -709,8 +704,12 @@ namespace Book
 		// 　今回はtrueになった場合、本来ならメモリにすでに読み込まれているのだから読み直しは必要ないが、
 		//　 何らかの目的で変更したのであろうから、この場合もきちんと反映しないとまずい。)
 		bool ignore_book_ply_ = Options["IgnoreBookPly"];
-		if (book_name == filename && this->on_the_fly == on_the_fly_ && this->ignoreBookPly == ignore_book_ply_)
+		if (this->book_name == filename && this->on_the_fly == on_the_fly_ && this->ignoreBookPly == ignore_book_ply_)
 			return 0;
+
+		// 一度このクラスのメンバーが保持しているファイル名はクリアする。(何も読み込んでいない状態になるので)
+		this->book_name = "";
+		this->pure_book_name = "";
 
 		// 別のファイルを開こうとしているので前回メモリに丸読みした定跡をクリアしておかないといけない。
 		book_body.clear();
@@ -723,8 +722,8 @@ namespace Book
 		// 読み込み済み、もしくは定跡を用いない(no_book)であるなら正常終了。
 		if (pure_filename == "no_book")
 		{
-			book_name = filename;
-			pure_book_name = pure_filename;
+			this->book_name = filename;
+			this->pure_book_name = pure_filename;
 			return 0;
 		}
 
@@ -746,21 +745,22 @@ namespace Book
 				fs.open(filename, ios::in);
 				if (fs.fail())
 				{
-					cout << "info string Error! : can't read " + filename << endl;
+					sync_cout << "info string Error! : can't read file : " + filename << sync_endl;
 					return 1;
 				}
 
 				// 定跡ファイルのopenにも成功したし、on the flyできそう。
 				// このときに限りこのフラグをtrueにする。
 				this->on_the_fly = true;
-				book_name = filename;
+				this->book_name = filename;
 				return 0;
 			}
 
+			sync_cout << "info string read book file : " << filename << sync_endl;
 			vector<string> lines;
 			if (read_all_lines(filename, lines))
 			{
-				cout << "info string Error! : can't read " + filename << endl;
+				sync_cout << "info string Error! : can't read file : " + filename << sync_endl;
 				//      exit(EXIT_FAILURE);
 				return 1; // 読み込み失敗
 			}
@@ -878,17 +878,27 @@ namespace Book
 		}
 
 		// 読み込んだファイル名を保存しておく。二度目のread_book()はskipする。
-		book_name = filename;
-		pure_book_name = pure_filename;
+		this->book_name = filename;
+		this->pure_book_name = pure_filename;
+
+		sync_cout << "info string read book done." << sync_endl;
 
 		return 0;
 	}
 
 	// 定跡ファイルの書き出し
-	int MemoryBook::write_book(const std::string& filename, bool sort) const
+	int MemoryBook::write_book(const std::string& filename /*, bool sort*/) const
 	{
+		// Position::set()で評価関数の読み込みが必要。
+		//is_ready();
+
+		// →　この関数はbookコマンドからしか呼び出さず、bookコマンドの処理の先頭付近でis_ready()を
+		// 呼び出しているため、この関数のなかでのis_ready()は呼び出さないことにする。
+
 		fstream fs;
 		fs.open(filename, ios::out);
+
+		cout << endl << "write " + filename;
 
 		// バージョン識別用文字列
 		fs << "#YANEURAOU-DB2016 1.00" << endl;
@@ -911,21 +921,32 @@ namespace Book
 			vectored_book.push_back(it);
 		}
 
-		if (sort)
-		{
 			// sfen文字列は手駒の表記に揺れがある。
 			// (USI原案のほうでは規定されているのだが、将棋所が採用しているUSIプロトコルではこの規定がない。)
 			// sortするタイミングで、一度すべての局面を読み込み、sfen()化しなおすことで
 			// やねうら王が用いているsfenの手駒表記(USI原案)に統一されるようにする。
 
+		// 進捗の出力
+		u64 counter = 0;
+		auto output_progress = [&]()
+		{
+			if ((counter % 1000) == 0)
 			{
-				// Position::set()で評価関数の読み込みが必要。
-				is_ready();
+				if ((counter % 80000) == 0) // 80文字ごとに改行
+					cout << endl;
+				cout << ".";
+			}
+			counter++;
+		};
+
+			{
 				Position pos;
 
 				// std::vectorにしてあるのでit.firstを書き換えてもitは無効にならないはず。
 				for (auto& it : vectored_book)
 				{
+				output_progress();
+
 					StateInfo si;
 					pos.set(it.first,&si,Threads.main());
 					auto sfen = pos.sfen();
@@ -948,10 +969,11 @@ namespace Book
 				[](const pair<string, PosMoveListPtr>&lhs, const pair<string, PosMoveListPtr>&rhs) {
 				return lhs.first < rhs.first;
 			});
-		}
 
 		for (auto& it : vectored_book)
 		{
+			output_progress();
+
 			// -- 重複局面の手数違いの局面はスキップする(ファイルに書き出さない)
 
 			auto sfen = it.first;
@@ -975,6 +997,8 @@ namespace Book
 		}
 
 		fs.close();
+
+		cout << endl << "done!" << endl;
 
 		return 0;
 	}
@@ -1078,24 +1102,28 @@ namespace Book
 				// C++的には未定義動作だが、これのためにsys/stat.hをincludeしたくない。
 				// ここでfs.clear()を呼ばないとeof()のあと、tellg()が失敗する。
 				fs.clear();
-				fs.seekg(0, std::ios::end);
-				auto file_end = fs.tellg();
-
-				fs.clear();
 				fs.seekg(0, std::ios::beg);
 				auto file_start = fs.tellg();
 
-				auto file_size = u64(file_end - file_start);
+				// 現在のファイルのシーク位置を返す関数(ファイルの先頭位置を0とする)
+				auto current_pos = [&]() { return s64(fs.tellg() - file_start); };
+
+				fs.clear();
+				fs.seekg(0, std::ios::end);
+
+				// ファイルサイズ(現在、ファイルの末尾を指しているはずなので..)
+				auto file_size = current_pos();
 
 				// 与えられたseek位置から"sfen"文字列を探し、それを返す。どこまでもなければ""が返る。
 				// hackとして、seek位置は-2しておく。(1行読み捨てるので、seek_fromぴったりのところに
 				// "sfen"から始まる文字列があるとそこを読み捨ててしまうため。-2してあれば、そこに
 				// CR+LFがあるはずだから、ここを読み捨てても大丈夫。)
-				auto next_sfen = [&](u64 seek_from)
+				auto next_sfen = [&](s64 seek_from)
 				{
 					string line;
 
-					fs.seekg(max(s64(0), (s64)seek_from - 2), fstream::beg);
+					seek_from = std::max( s64(0), seek_from - 2);
+					fs.seekg(seek_from , fstream::beg);
 
 					// --- 1行読み捨てる
 
@@ -1119,7 +1147,9 @@ namespace Book
 				// バイナリサーチ
 				// [s,e) の範囲で求める。
 
-				u64 s = 0, e = file_size, m;
+				s64 s = 0, e = file_size, m;
+				// s,eは無符号型だと、s - 2のような式が負にならないことを保証するのが面倒くさい。
+				// こういうのを無符号型で扱うのは筋が悪い。
 
 				while (true)
 				{
@@ -1132,20 +1162,20 @@ namespace Book
 					}
 					else if (sfen > sfen2)
 					{ // 右(それより大きいところ)を探す
-						s = u64(fs.tellg() - file_start);
+						s = current_pos();
 					}
 					else {
 						// 見つかった！
 						break;
 					}
 
-					// 40バイトより小さなsfenはありえないので探索範囲がこれより小さいなら終了。
-					// s,eは無符号型であることに注意。if (s-40 < e) と書くとs-40がマイナスになりかねない。
+					// 40バイトより小さなsfenはありえないので、この範囲に２つの"sfen"で始まる文字列が
+					// 入っていないことは保証されている。
+					// ゆえに、探索範囲がこれより小さいなら先頭から調べて("sfen"と書かれている文字列を探して)終了。
 					if (s + 40 > e)
 					{
-						// ただしs = 0のままだと先頭要素が探索されていないということなので
-						// このケースに限り先頭要素を再探索
-						if (s == 0 && next_sfen(s) == sfen)
+						if ( next_sfen(s) == sfen)
+							// 見つかった！
 							break;
 
 						// 見つからなかった
@@ -1360,8 +1390,7 @@ namespace Book
 			, "yaneura_book1.db" , "yaneura_book2.db" , "yaneura_book3.db", "yaneura_book4.db"
 			, "user_book1.db", "user_book2.db", "user_book3.db", "book.bin" };
 
-		o["BookFile"] << Option(book_list, book_list[1], [&](const Option& o){ this->book_name = string(o); });
-		book_name = book_list[1];
+		o["BookFile"] << Option(book_list, book_list[1]);
 
 		o["BookDir"] << Option("book");
 
@@ -1486,7 +1515,15 @@ namespace Book
 				sync_cout << "info pv " << pv_string
 					<< " (" << fixed << std::setprecision(2) << (100 * it.prob) << "%)" // 採択確率
 					<< " score cp " << it.value << " depth " << it.depth
-					<< " multipv " << (i+1) << sync_endl;
+#if !defined(NICONICO)
+					<< " multipv " << (i+1)
+#endif					
+					<< sync_endl;
+
+				// 電王盤はMultiPV非対応なので1番目の読み筋だけを"multipv"をつけずに送信する。
+#if defined(NICONICO)
+				break;
+#endif
 			}
 		}
 
@@ -1551,6 +1588,11 @@ namespace Book
 				// 評価値がvalue_limitを下回るものを削除
 				auto it_end = std::remove_if(move_list.begin(), move_list.end(), [&](Book::BookPos & m) { return m.value < value_limit; });
 				move_list.erase(it_end, move_list.end());
+
+				// これを出力するとShogiGUIの棋譜解析で読み筋として表示されてしまう…。
+				// 棋譜解析でinfo stringの文字列を拾う実装になっているのがおかしいのだが。
+				// ShogiGUIの作者に要望を出す。[2019/06/20]
+				// →　対応してもらえるらしい。[2019/06/22]
 
 				// 候補手が1手でも減ったなら減った理由を出力
 				if (!silent && n != move_list.size())

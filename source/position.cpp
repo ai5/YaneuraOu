@@ -42,6 +42,7 @@ void Position::set_check_info(StateInfo* si) const {
 	//: si->blockersForKing[BLACK] = slider_blockers(pieces(WHITE), square<KING>(BLACK),si->pinners[BLACK]);
 
 	// ↓Stockfishのこの部分の実装、将棋においては良くないので、以下のように変える。
+	// ※　将棋においては駒の動きが上下対称ではないので手番を引数で渡す必要がある。
 
 	if (!doNullMove)
 	{
@@ -88,20 +89,25 @@ void Position::set_check_info(StateInfo* si) const {
 //       Zorbrist keyの初期化
 // ----------------------------------
 
+#if defined(CUCKOO)
 // Marcel van Kervinck's cuckoo algorithm for fast detection of "upcoming repetition"
 // situations. Description of the algorithm in the following paper:
 // https://marcelk.net/2013-04-06/paper/upcoming-rep-v2.pdf
 
-// // Cuckoo tables with Zobrist hashes of valid reversible moves, and the moves themselves
-// Key cuckoo[8192];
-// Move cuckooMove[8192];
+// Stockfishの2倍の配列を確保
+
+// First and second hash functions for indexing the cuckoo tables
+inline int H1(Key h) { return h & 0x3fff; }
+inline int H2(Key h) { return (h >> 16) & 0x3fff; }
+
+// Cuckoo tables with Zobrist hashes of valid reversible moves, and the moves themselves
+Key cuckoo[8192*2];
+Move cuckooMove[8192*2];
 
 //  →　cuckooアルゴリズムとやらで、千日手局面に到達する指し手の検出が高速化できるらしい。
 // (数手前の局面と現在の局面の差が、ある駒の移動(+捕獲)だけであることが高速に判定できれば、
 // 　早期枝刈りとしてdraw_valueを返すことができる。)
-//  ただ、将棋だと手駒があるためChessの場合ほど自明ではない。
-//  もともと0.3%程度の高速化しかされないようで、このためにテーブルを確保したりしないといけないのは嫌なので、
-//  このコードは採用しないことにする。(そもそも、上記の枝刈りを探索部で採用していない…)
+#endif
 
 void Position::init() {
 	PRNG rng(20151225); // 開発開始日 == 電王トーナメント2015,最終日
@@ -127,6 +133,60 @@ void Position::init() {
 
 	for (int i = 0; i < MAX_PLY; ++i)
 		SET_HASH(Zobrist::depth[i], rng.rand<Key>() & ~1ULL, rng.rand<Key>(), rng.rand<Key>(), rng.rand<Key>());
+
+#if defined(CUCKOO)
+	// Prepare the cuckoo tables
+	std::memset(cuckoo, 0, sizeof(cuckoo));
+	std::memset(cuckooMove, 0, sizeof(cuckooMove));
+	int count = 0;
+	// 重複カウント用
+	int count2 = 0;
+	for (auto pc : Piece())
+	{
+		auto pt = type_of(pc);
+		if (!(pt == PAWN || pt == LANCE || pt == KNIGHT || pt == SILVER || pt == GOLD || pt == BISHOP || pt == ROOK || pt == KING
+			|| pt == PRO_PAWN || pt == PRO_LANCE || pt == PRO_KNIGHT || pt == PRO_SILVER || pt == HORSE || pt == DRAGON))
+			continue;
+
+		// 将棋だとチェスと異なり、from →　toに動かせるからと言ってto→fromに動かせるとは限らないので
+		// ここのコード、ずいぶん違ってくる。
+		for (auto s1 : SQ)
+			for (Square s2 : SQ)
+				if (effects_from(pc, s1, ZERO_BB) & s2)
+				{
+					Move move = (Move)(make_move(s1, s2) + (pc << 16));
+					// 手番のところ使わない。無視するために潰す。
+					Key key = (Zobrist::psq[s2][pc] - Zobrist::psq[s1][pc]) >> 1/* Zobrist::side*/;
+					int i = H1(key);
+					while (true)
+					{
+						std::swap(cuckoo[i], key);
+						std::swap(cuckooMove[i], move);
+						if (move == MOVE_NONE) // Arrived at empty slot?
+							break;
+
+						//i = (i == H1(key)) ? H2(key) : H1(key); // Push victim to alternative slot
+						// →　これ、テーブル小さいので衝突しつづける…(´ω｀)　H1になかったらH2でええで..
+
+						i = H2(key);
+						std::swap(cuckoo[i], key);
+						std::swap(cuckooMove[i], move);
+
+						if (move != MOVE_NONE)
+							count2++;
+
+						break;
+					}
+					count++;
+				}
+	}
+	//assert(count == 3668); // chessの場合
+
+	// cout << "count = " << count << " , count2 = " << count2 << endl;
+	// chessの2倍の配列時 : count = 16456 , count2 = 4499
+	// chessの4倍の配列時 : count = 16456 , count2 = 1623
+	ASSERT_LV3(count == 16456);
+#endif
 }
 
 // depthに応じたZobrist Hashを得る。depthを含めてhash keyを求めたいときに用いる。
@@ -143,8 +203,26 @@ std::string pretty(Piece pc) { return std::string(USI_PIECE).substr(pc * 2, 2); 
 // "□"(四角)は文字フォントによっては半分の幅しかない。"口"(くち)にする。
 std::string USI_PIECE_KANJI[] = {
 	" 口"," 歩"," 香"," 桂"," 銀"," 角"," 飛"," 金"," 玉"," と"," 杏"," 圭"," 全"," 馬"," 龍"," 菌"," 王",
-		  "^歩","^香","^桂","^銀","^角","^飛","^金","^玉","^と","^杏","^圭","^全","^馬","^龍","^菌","^王" };
-std::string pretty(Piece pc) { return USI_PIECE_KANJI[pc]; }
+		  "^歩","^香","^桂","^銀","^角","^飛","^金","^玉","^と","^杏","^圭","^全","^馬","^龍","^菌","^王"
+};
+std::string pretty(Piece pc) {
+#if 1
+	return USI_PIECE_KANJI[pc];
+#else
+	// 色を変えたほうがわかりやすい。Linuxは簡単だが、MS-DOSは設定が面倒。
+	// Linux : https://qiita.com/dojineko/items/49aa30018bb721b0b4a9
+	// MS-DOS : https://one-person.hatenablog.jp/entry/2017/02/23/125809
+
+	std::string result;
+	if (pc != NO_PIECE)
+		result = (color_of(pc) == BLACK) ? "\\e[32;40;1m" : "\\e[33;40;1m";
+	result += USI_PIECE_KANJI[pc];
+	if (pc != NO_PIECE)
+		result += "\\e[m";
+
+	return result;
+#endif
+}
 #endif
 
 // sfen文字列で盤面を設定する
@@ -200,7 +278,7 @@ void Position::set(std::string sfen , StateInfo* si , Thread* th)
 		// 数字は、空の升の数なのでその分だけ筋(File)を進める
 		if (isdigit(token))
 			f -= File(token - '0');
-		// '/'は次の段を意味する                              
+		// '/'は次の段を意味する
 		else if (token == '/')
 		{
 			f = FILE_9;
@@ -533,14 +611,14 @@ std::string Position::moves_from_start(bool is_pretty) const
 // ----------------------------------
 
 // Position::slider_blockers() は、c側の長い利きを持つ駒(sliders)から、升sへの利きを
-// 遮っている両方の手番を返す。ただし、２重に遮っている場合はそれらの駒は返さない。
+// 遮っている先後の駒の位置をBitboardで返す。ただし、２重に遮っている場合はそれらの駒は返さない。
 // もし、この関数のこの返す駒を取り除いた場合、升sに対してsliderによって利きがある状態になる。
 // 升sにある玉に対してこの関数を呼び出した場合、それはpinされている駒と両王手の候補となる駒である。
 // また、升sにある玉は~c側のKINGであるとする。
 
 Bitboard Position::slider_blockers(Color c, Square s , Bitboard& pinners) const {
 
-	Bitboard result = ZERO_BB;
+	Bitboard blockers = ZERO_BB;
 
 	// pinnersは返し値。
 	pinners = ZERO_BB;
@@ -556,22 +634,28 @@ Bitboard Position::slider_blockers(Color c, Square s , Bitboard& pinners) const 
 		| (pieces(LANCE) & lanceStepEffect(~c, s))
 		) & pieces(c);
 
+	//Bitboard occupancy = pieces() ^ snipers;
+
+	// ↑このStockfishの元のコード、snipersを除いた盤上の駒で考えているが、
+	// ^王 歩 角 飛
+	// このような状況で飛車に対して角を取り除いてから敵玉への射線を考えるので、
+	// 歩がslider_blocker扱いになってしまう。つまり、このコードは間違っているのでは？
+	
 	while (snipers)
 	{
 		Square sniperSq = snipers.pop();
-		Bitboard b = between_bb(s, sniperSq) & pieces();
+		Bitboard b = between_bb(s, sniperSq) & pieces() /* occupancy */;
 
 		// snipperと玉との間にある駒が1個であるなら。
-		// (間にある駒が0個の場合、b == ZERO_BBとなり、何も変化しない。)
-		if (!more_than_one(b))
+		if (b && !more_than_one(b))
 		{
-			result |= b;
+			blockers |= b;
 			if (b & pieces(~c))
 				// sniperと玉に挟まれた駒が玉と同じ色の駒であるなら、pinnerに追加。
 				pinners |= sniperSq;
 		}
 	}
-	return result;
+	return blockers;
 }
 
 
@@ -681,8 +765,9 @@ bool Position::gives_check(Move m) const
 	const Square from = move_from(m);
 
 	// 開き王手になる駒の候補があるとして、fromにあるのがその駒で、fromからtoは玉と直線上にないなら
+	// 前提条件より、fromにあるのが自駒であることは確定しているので、pieces(sideToMove)は不要。
 	return !is_drop(m)
-		&& ((discovered_check_candidates() & from)
+		&& (((blockers_for_king(~sideToMove) /*& pieces(sideToMove)*/) & from)
 		&& !aligned(from, to, square<KING>(~sideToMove)));
 }
 
@@ -925,9 +1010,15 @@ bool Position::pseudo_legal_s(const Move m) const {
 				return false;
 #endif
 
-			// 移動先が敵陣でないと成れない。先手が置換表衝突で後手の指し手を引いてきたら、こういうことになりかねない。
+#if !defined(KEEP_PIECE_IN_GENERATE_MOVES)
+			// 移動先が敵陣でないと成れない。
+			// ただし、Zobrist::side == 1なので先手と後手は常にハッシュ値が異なる。
+			// よって先手と後手の手が置換表衝突する事はない。
+			// また、killer move等に関しては32bit形式であればPieceと成と移動元(先)が矛盾する事はない。
+			// そのため、32bit形式ではこのチェックは不要。
 			if (!(enemy_field(us) & (Bitboard(from) | Bitboard(to))))
 				return false;
+#endif
 
 		}
 		else {
@@ -1117,7 +1208,7 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 
 	// 厳密には、これはrootからの手数ではなく、初期盤面からの手数ではあるが。
 	++gamePly;
-	
+
 	// st->previousで遡り可能な手数カウンタ
 	st->pliesFromNull = prev->pliesFromNull + 1;
 
@@ -1209,7 +1300,7 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 		// 玉の移動ではないことを示しておく。
 		dp.moved_king = COLOR_NB;
 #endif
-		
+
 		// 王手している駒のbitboardを更新する。
 		// 駒打ちなのでこの駒で王手になったに違いない。駒打ちで両王手はありえないので王手している駒はいまtoに置いた駒のみ。
 		if (givesCheck)
@@ -1747,16 +1838,9 @@ void Position::undo_null_move()
 // ----------------------------------
 
 // 連続王手の千日手等で引き分けかどうかを返す
-RepetitionState Position::is_repetition(int ply , int repPly_ /* = 32 */) const
+RepetitionState Position::is_repetition(int repPly /* = 16 */) const
 {
 	// repPlyまで遡る
-	// rootより遡るのであれば2度同一局面が出現する必要があるので16の倍にしておく。
-	// この値が増えるの、多少、気分が悪いところではあるが…。
-	//
-	// これ16から32に変更したことで1%ぐらい速度低下するようだ。
-	// 16手目までに1度も同一局面が出現しなければリタイアしたいが、この処理を綺麗に書くのは難しい…。
-	const int repPly = repPly_;
-
 	// 現在の局面と同じhash keyを持つ局面があれば、それは千日手局面であると判定する。
 
 	// 　rootより遡るなら、2度出現する(3度目の同一局面である)必要がある。
@@ -1765,6 +1849,15 @@ RepetitionState Position::is_repetition(int ply , int repPly_ /* = 32 */) const
 	//   Don't score as an immediate draw 2-fold repetitions of the root position
 	//   https://github.com/official-stockfish/Stockfish/commit/6d89d0b64a99003576d3e0ed616b43333c9eca01
 
+	// チェスだと千日手は同一局面3回(将棋だと4回)である。
+	// root以降で同一局面が2度出現した場合は、それを千日手として扱うのは妥当である。
+	// root以前の局面と現在の局面が一致している場合は、即座に千日手成立として扱うのは無理があるという判断のもと、
+	// 千日手確定のときのみ千日手とする処理がStockfishにはある。
+	// しかし、将棋では千日手成立には同一局面が4回出現する必要があるので、この場合、root以前に3回同じ局面が出現して
+	// いるかチェックする必要があるが、そこまでする必要があるとは思えない。ゆえに、このチェックを省略する。
+
+	// 【計測資料 35.】is_repetition() 同一局面をrootより遡って見つけたときに即座に千日手として扱うか。
+	
 	// pliesFromNullが未初期化になっていないかのチェックのためのassert
 	ASSERT_LV3(st->pliesFromNull >= 0);
 
@@ -1772,14 +1865,11 @@ RepetitionState Position::is_repetition(int ply , int repPly_ /* = 32 */) const
 	// 最大でもrepPly手までしか遡らないことにする。
 	int end = std::min(repPly, st->pliesFromNull);
 
-	// 4手かけないと千日手にはならないから、4手前から調べていく。
+	// 少なくとも4手かけないと千日手にはならないから、4手前から調べていく。
 	if (end < 4)
 		return REPETITION_NONE;
 
 	StateInfo* stp = st->previous->previous;
-
-	// 盤上の駒が同一である局面が出現した回数
-	int cnt = 0;
 
 	for (int i = 4; i <= end ; i += 2)
 	{
@@ -1792,10 +1882,6 @@ RepetitionState Position::is_repetition(int ply , int repPly_ /* = 32 */) const
 			// 手駒が一致するなら同一局面である。(2手ずつ遡っているので手番は同じである)
 			if (stp->hand == st->hand)
 			{
-				// root(==ply)より遡る(ply <= i)なら2度出現(cnt == 2)する必要がある。
-				// rootより遡らない(ply > i)なら1度目の出現(cnt == 1)で千日手と判定する。
-				if (++cnt + (ply > i) == 2)
-				{
 					// 自分が王手をしている連続王手の千日手なのか？
 					if (i <= st->continuousCheck[sideToMove])
 						return REPETITION_LOSE;
@@ -1805,7 +1891,6 @@ RepetitionState Position::is_repetition(int ply , int repPly_ /* = 32 */) const
 						return REPETITION_WIN;
 
 					return REPETITION_DRAW;
-				}
 			}
 			else {
 				// 優等局面か劣等局面であるか。(手番が相手番になっている場合はいま考えない)
@@ -1819,6 +1904,182 @@ RepetitionState Position::is_repetition(int ply , int repPly_ /* = 32 */) const
 
 	// 同じhash keyの局面が見つからなかったので…。
 	return REPETITION_NONE;
+}
+
+#if defined(CUCKOO)
+// この局面から以前の局面に到達する指し手があるか。
+// ply : 遡る手数
+bool Position::has_game_cycle(int plies_from_root, int rep_ply /*= 16*/) const
+{
+	int j;
+
+	int end = std::min(/* st->rule50*/ rep_ply , st->pliesFromNull);
+
+	if (end < 3)
+		return false;
+
+	Key originalKey = st->key();
+	StateInfo* stp = st->previous;
+
+	for (int i = 3; i <= end; i += 2)
+	{
+		stp = stp->previous->previous;
+
+		// やねうら王ではZobrist Hashに足し算を使っているので、差を取る必要がある。
+		// bit 0はside(手番)なので、ここは削る。
+		Key moveKey = (stp->key() - originalKey) >> 1;
+		if ((j = H1(moveKey), cuckoo[j] == moveKey)
+			|| (j = H2(moveKey), cuckoo[j] == moveKey))
+		{
+			Move move = cuckooMove[j];
+			Square s1 = from_sq(move);
+			Square s2 = to_sq(move);
+			Piece pc = (Piece)(move >> 16);
+			if (piece_on(s1) != pc)
+				continue;
+
+			// 間に駒がないのでたぶんいける。開き王手とか知らん。
+			// ざっくりした枝刈りにしか使わないのでこのへんの判定甘くても問題ない。
+			if (!(between_bb(s1, s2) & pieces()))
+			{
+				if (plies_from_root > i)
+					return true;
+
+				// For repetitions before or at the root, require one more
+				// rootまでに指し手が見つかった場合、もう一度同じ局面に遭遇する必要がある。
+
+				// Stockfish10のコード
+				//if (stp->repetition)
+				//	return true;
+
+				// Stockfish9の時のコード。(StateInfo->repetitionを持っていないのでこんなコードになる)
+				StateInfo* next_stp = stp;
+				for (int k = i + 2; k <= end; k += 2)
+				{
+					next_stp = next_stp->previous->previous;
+					if (next_stp->key() == stp->key())
+						return true;
+				}
+
+			}
+		}
+	}
+	return false;
+}
+#endif
+
+// ----------------------------------
+//      入玉判定
+// ----------------------------------
+
+Move Position::DeclarationWin() const
+{
+	auto rule = Search::Limits.enteringKingRule;
+
+	switch (rule)
+	{
+		// 入玉ルールなし
+	case EKR_NONE: return MOVE_NONE;
+
+		// CSAルールに基づく宣言勝ちの条件を満たしているか
+		// 満たしているならば非0が返る。返し値は駒点の合計。
+		// cf.http://www.computer-shogi.org/protocol/tcp_ip_1on1_11.html
+	case EKR_24_POINT: // 24点法(31点以上で宣言勝ち)
+	case EKR_27_POINT: // 27点法 == CSAルール
+	{
+		/*
+		「入玉宣言勝ち」の条件(第13回選手権で使用のもの):
+
+		次の条件が成立する場合、勝ちを宣言できる(以下「入玉宣言勝ち」と云う)。
+		条件:
+		(a) 宣言側の手番である。
+		(b) 宣言側の玉が敵陣三段目以内に入っている。
+		(c) 宣言側が(大駒5点小駒1点の計算で)
+		・先手の場合28点以上の持点がある。
+		・後手の場合27点以上の持点がある。
+		・点数の対象となるのは、宣言側の持駒と敵陣三段目
+		以内に存在する玉を除く宣言側の駒のみである。
+		(d) 宣言側の敵陣三段目以内の駒は、玉を除いて10枚以上存在する。
+		(e) 宣言側の玉に王手がかかっていない。
+		(詰めろや必死であることは関係ない)
+		(f) 宣言側の持ち時間が残っている。(切れ負けの場合)
+		以上1つでも条件を満たしていない場合、宣言した方が負けとなる。
+		(注) このルールは、日本将棋連盟がアマチュアの公式戦で使用しているものである。
+
+		以上の宣言は、コンピュータが行い、画面上に明示する。
+		*/
+		// (a)宣言側の手番である。
+		// →　手番側でこの関数を呼び出して判定するのでそうだろう。
+
+		Color us = sideToMove;
+
+		// 敵陣
+		Bitboard ef = enemy_field(us);
+
+		// (b)宣言側の玉が敵陣三段目以内に入っている。
+		if (!(ef & king_square(us)))
+			return MOVE_NONE;
+
+		// (e)宣言側の玉に王手がかかっていない。
+		if (checkers())
+			return MOVE_NONE;
+
+
+		// (d)宣言側の敵陣三段目以内の駒は、玉を除いて10枚以上存在する。
+		int p1 = (pieces(us) & ef).pop_count();
+		// p1には玉も含まれているから11枚以上ないといけない
+		if (p1 < 11)
+			return MOVE_NONE;
+
+		// 敵陣にいる大駒の数
+		int p2 = ((pieces(us, BISHOP_HORSE, ROOK_DRAGON)) & ef).pop_count();
+
+		// 小駒1点、大駒5点、玉除く
+		// ＝　敵陣の自駒 + 敵陣の自駒の大駒×4 - 玉
+
+		// (c)
+		// ・先手の場合28点以上の持点がある。
+		// ・後手の場合27点以上の持点がある。
+		Hand h = hand[us];
+		int score = p1 + p2 * 4 - 1
+			+ hand_count(h, PAWN) + hand_count(h, LANCE) + hand_count(h, KNIGHT) + hand_count(h, SILVER)
+			+ hand_count(h, GOLD) + (hand_count(h, BISHOP) + hand_count(h, ROOK)) * 5;
+
+		// rule==EKR_27_POINTならCSAルール。rule==EKR_24_POINTなら24点法(30点以下引き分けなので31点以上あるときのみ勝ち扱いとする)
+		if (score < (rule == EKR_27_POINT ? (us == BLACK ? 28 : 27) : 31))
+			return MOVE_NONE;
+
+		// 評価関数でそのまま使いたいので非0のときは駒点を返しておく。
+		return MOVE_WIN;
+	}
+
+	// トライルールの条件を満たしているか。
+	case EKR_TRY_RULE:
+	{
+		Color us = sideToMove;
+		Square king_try_sq = (us == BLACK ? SQ_51 : SQ_59);
+		Square king_sq = king_square(us);
+
+		// 1) 初期陣形で敵玉がいた場所に自玉が移動できるか。
+		if (!(kingEffect(king_sq) & king_try_sq))
+			return MOVE_NONE;
+
+		// 2) トライする升に自駒がないか。
+		if (pieces(us) & king_try_sq)
+			return MOVE_NONE;
+
+		// 3) トライする升に移動させたときに相手に取られないか。
+		if (effected_to(~us, king_try_sq, king_sq))
+			return MOVE_NONE;
+
+		// 王の移動の指し手により勝ちが確定する
+		return make_move(king_sq, king_try_sq);
+	}
+
+	default:
+		UNREACHABLE;
+		return MOVE_NONE;
+	}
 }
 
 // ----------------------------------

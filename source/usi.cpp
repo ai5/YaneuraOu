@@ -245,25 +245,25 @@ u64 eval_sum;
 void is_ready(bool skipCorruptCheck)
 {
 	// "isready"を受け取ったあと、"readyok"を返すまで5秒ごとに改行を送るように修正する。(keep alive的な処理)
-	//	USI2.0の仕様より。
-	//  -"isready"のあとのtime out時間は、30秒程度とする。これを超えて、評価関数の初期化、hashテーブルの確保をしたい場合、
-	//  思考エンジン側から定期的に何らかのメッセージ(改行可)を送るべきである。
-	//  -ShogiGUIではすでにそうなっているので、MyShogiもそれに追随する。
-	//  -また、やねうら王のエンジン側は、"isready"を受け取ったあと、"readyok"を返すまで5秒ごとに改行を送るように修正する。
-	 
-	auto ended = false;
-	auto th = std::thread([&ended] {
-		int count = 0;
-		while (!ended)
-		{
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			if (++count >= 50 /* 5秒 */)
-			{
-				count = 0;
-				sync_cout << sync_endl; // 改行を送信する。
-			}
-		}
-	});
+	// →　これ、よくない仕様であった。
+	// cf. USIプロトコルでisready後の初期化に時間がかかる時にどうすれば良いのか？
+	//     http://yaneuraou.yaneu.com/2020/01/05/usi%e3%83%97%e3%83%ad%e3%83%88%e3%82%b3%e3%83%ab%e3%81%a7isready%e5%be%8c%e3%81%ae%e5%88%9d%e6%9c%9f%e5%8c%96%e3%81%ab%e6%99%82%e9%96%93%e3%81%8c%e3%81%8b%e3%81%8b%e3%82%8b%e6%99%82%e3%81%ab%e3%81%a9/
+
+#if defined (USE_EVAL_HASH)
+	Eval::EvalHash_Resize(Options["EvalHash"]);
+#endif
+
+	// 初回初期化
+	static bool init = false;
+	if (!init)
+	{
+		// eHashのクリアもこのタイミングで行うことにする。
+		// (大きめのものを確保していると時間がかかるため)
+#if defined (USE_EVAL_HASH)
+		Eval::EvalHash_Clear();
+#endif
+		init = true;
+	}
 
 	// 評価関数の読み込みなど時間のかかるであろう処理はこのタイミングで行なう。
 	// 起動時に時間のかかる処理をしてしまうと将棋所がタイムアウト判定をして、思考エンジンとしての認識をリタイアしてしまう。
@@ -279,7 +279,6 @@ void is_ready(bool skipCorruptCheck)
 		Eval::print_softname(eval_sum);
 
 		USI::load_eval_finished = true;
-
 	}
 	else
 	{
@@ -293,14 +292,11 @@ void is_ready(bool skipCorruptCheck)
 	// このタイミングで各種変数の初期化もしておく。
 
 	TT.resize(Options["Hash"]);
+
 	Search::clear();
-	Time.availableNodes = 0;
+//	Time.availableNodes = 0;
 
 	Threads.stop = false;
-
-	// keep aliveを送信するために生成したスレッドを終了させ、待機する。
-	ended = true;
-	th.join();
 }
 
 // isreadyコマンド処理部
@@ -381,8 +377,9 @@ void setoption_cmd(istringstream& is)
 	if (Options.count(name))
 		Options[name] = value;
 	else {
-		// USI_HashとUSI_Ponderは無視してやる。
-		if (name != "USI_Hash" && name != "USI_Ponder")
+		// USI_Hashは無視してやる。
+		if (name != "USI_Hash" /* && name != "USI_Ponder" */)
+			// USI_Ponderは使うように変更した。
 			// この名前のoptionは存在しなかった
 			sync_cout << "Error! : No such option: " << name << sync_endl;
 	}
@@ -425,8 +422,10 @@ void go_cmd(const Position& pos, istringstream& is , StateListPtr& states) {
 	// 思考開始時刻の初期化。なるべく早い段階でこれをしておかないとサーバー時間との誤差が大きくなる。
 	Time.reset();
 
+#if defined (USE_ENTERING_KING_WIN)
 	// 入玉ルール
-	limits.enteringKingRule = USI::ekr;
+	limits.enteringKingRule = to_entering_king_rule(Options["EnteringKingRule"]);
+#endif
 
 	// 終局(引き分け)になるまでの手数
 	// 引き分けになるまでの手数。(Options["MaxMovesToDraw"]として与えられる。エンジンによってはこのオプションを持たないこともある。)
@@ -638,7 +637,7 @@ void USI::loop(int argc, char* argv[])
 			// gameoverに対してbestmoveは返すべきではないのかも知れないが、
 			// それを言えばstopにだって…。
 
-#ifdef USE_GAMEOVER_HANDLER
+#if defined(USE_GAMEOVER_HANDLER)
 			// "gameover"コマンドに対するハンドラを呼び出したいのか？
 			if (token == "gameover")
 				gameover_handler(cmd);
@@ -706,6 +705,9 @@ void USI::loop(int argc, char* argv[])
 				cout << m.move << ' ';
 			cout << endl;
 		}
+
+		// この局面の手番側がどちらであるかを返す。BLACK or WHITE
+		else if (token == "side") cout << (pos.side_to_move() == BLACK ? "black":"white") << endl;
 
 		// この局面が詰んでいるかの判定
 		else if (token == "mated") cout << pos.is_mated() << endl;

@@ -136,7 +136,20 @@ const string engine_info() {
 	}
 	else
 	{
-		ss << "id name " << ENGINE_NAME << ' '
+		ss << "id name " <<
+			// Makefileのほうでエンジン表示名が指定されているならそれに従う。
+#if defined(ENGINE_NAME_FROM_MAKEFILE)
+			// マクロの内容の文字列化
+			// cf. https://www.hiroom2.com/2015/09/07/c%E8%A8%80%E8%AA%9E%E3%81%AE-line-%E3%83%9E%E3%82%AF%E3%83%AD%E3%82%92%E3%83%97%E3%83%AA%E3%83%97%E3%83%AD%E3%82%BB%E3%83%83%E3%82%B5%E3%81%AE%E6%AE%B5%E9%9A%8E%E3%81%A7%E6%96%87%E5%AD%97%E5%88%97%E3%81%AB%E5%A4%89%E6%8F%9B%E3%81%99%E3%82%8B/
+#define STRINGIFY(n) #n
+#define TOSTRING(n) STRINGIFY(n)
+			TOSTRING(ENGINE_NAME_FROM_MAKEFILE)
+#undef STRINGIFY
+#undef TOSTRING
+#else
+			ENGINE_NAME
+#endif			
+			<< ' '
 			<< EVAL_TYPE_NAME << ' '
 			<< ENGINE_VERSION << setfill('0')
 			<< (Is64Bit ? " 64" : " 32")
@@ -155,7 +168,7 @@ const string engine_info() {
 //  統計情報
 // --------------------
 
-static int64_t hits[2], means[2];
+static std::atomic<int64_t> hits[2], means[2];
 
 void dbg_hit_on(bool b) { ++hits[0]; if (b) ++hits[1]; }
 void dbg_hit_on(bool c, bool b) { if (c) dbg_hit_on(b); }
@@ -390,7 +403,7 @@ namespace WinProcGroup {
 
 // 進捗を表示しながら並列化してゼロクリア
 // ※ Stockfishのtt.cppのTranspositionTable::clear()にあるコードと同等のコード。
-void memclear(void* table, size_t size)
+void memclear(const char* name_ , void* table, size_t size)
 {
 	// Windows10では、このゼロクリアには非常に時間がかかる。
 	// malloc()時点ではメモリを実メモリに割り当てられておらず、
@@ -399,7 +412,8 @@ void memclear(void* table, size_t size)
 
 	// memset(table, 0, size);
 
-	sync_cout << "info string Hash Clear begin , Hash size =  " << size / (1024 * 1024) << "[MB]" << sync_endl;
+	std::string name(name_);
+	sync_cout << "info string " + name + " Clear begin , Hash size =  " << size / (1024 * 1024) << "[MB]" << sync_endl;
 
 	// マルチスレッドで並列化してクリアする。
 
@@ -430,7 +444,7 @@ void memclear(void* table, size_t size)
 	for (std::thread& th : threads)
 		th.join();
 
-	sync_cout << "info string Hash Clear done." << sync_endl;
+	sync_cout << "info string " + name + " Clear done." << sync_endl;
 
 }
 
@@ -702,20 +716,115 @@ namespace StringExtension
 		return result;
 	}
 
+	// スペース、タブなど空白に相当する文字で分割して返す。
+	std::vector<std::string> split(const std::string& input)
+	{
+		auto result = std::vector<string>();
+		LineScanner scanner(input);
+		while (!scanner.eof())
+			result.push_back(scanner.get_text());
+
+		return result;
+	}
+
+	// 文字列valueが、文字列endingで終了していればtrueを返す。
+	bool StartsWith(std::string const& value, std::string const& starting)
+	{
+		if (starting.size() > value.size()) return false;
+		return std::equal(starting.begin(), starting.end(), value.begin());
+	};
+
+	// 文字列valueが、文字列endingで終了していればtrueを返す。
+	bool EndsWith(std::string const& value, std::string const& ending)
+	{
+		if (ending.size() > value.size()) return false;
+		return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+	};
+
 };
 
 // --------------------
-//  Dependency Wrapper
+//  FileSystem
 // --------------------
 
-namespace Dependency
+#if defined(_MSC_VER)
+
+// C++17から使えるようになり、VC++2019でも2018年末のupdateから使えるようになったらしいのでこれを使う。
+#include <filesystem>
+
+#elif defined(__GNUC__)
+
+// GCC/clangのほうはfilesystem使う方法がよくわからないので保留しとく。
+/*
+ 備考)
+   GCC 8.1では、リンクオプションとして -lstdc++fsが必要
+   Clang 7.0では、リンクオプションとして -lc++fsが必要
+
+ 2020/1/17現時点で最新版はClang 9.0.0のようだが、OpenBlas等が使えるかわからないので、使えるとわかってから
+ filesystemを使うように修正する。
+
+Mizarさんより。
+https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91786#c2
+Fixed for GCC 9.3
+とあるのでまだMSYS2でfilesystemは無理じゃないでしょうか
+*/
+
+#include <dirent.h>
+#endif
+
+// ディレクトリに存在するファイルの列挙用
+// C#のDirectoryクラスっぽい何か
+namespace Directory
 {
-	bool getline(std::ifstream& fs, std::string& s)
+	// 指定されたフォルダに存在するファイルをすべて列挙する。
+	// 列挙するときに拡張子を指定できる。(例 : ".bin")
+	// 拡張子として""を指定すればすべて列挙される。
+	std::vector<std::string> EnumerateFiles(const std::string& sourceDirectory, const string& extension)
 	{
-	bool b = (bool)std::getline(fs, s);
-		s = StringExtension::trim(s);
-	return b;
+		std::vector<std::string> filenames;
+
+#if defined(_MSC_VER)
+		// ※　std::tr2は、std:c++14 の下では既定で非推奨の警告を出し、/std:c++17 では既定で削除された。
+		// Visual C++2019がupdateでC++17に対応したので、std::filesystemを素直に使ったほうが良い。
+
+		namespace fs = std::filesystem;
+
+		// filesystemのファイル列挙、ディレクトリとして空の文字列を渡すと例外で落ちる。
+		// current directoryにしたい時は明示的に指定してやらなければならない。
+		auto src = sourceDirectory.empty() ? fs::current_path() : fs::path(sourceDirectory);
+
+		for (auto ent : fs::directory_iterator(src))
+			if (fs::is_regular_file(ent)
+				&& StringExtension::EndsWith(ent.path().filename().string() , extension))
+
+				filenames.push_back(Path::Combine(ent.path().parent_path().string(),ent.path().filename().string()));
+
+#elif defined(__GNUC__)
+
+		// 仕方ないのでdirent.hを用いて読み込む。
+		DIR* dp;       // ディレクトリへのポインタ
+		dirent* entry; // readdir() で返されるエントリーポイント
+
+		dp = opendir(sourceDirectory.c_str());
+		if (dp != NULL)
+		{
+			do {
+				entry = readdir(dp);
+				// ".bin"で終わるファイルのみを列挙
+				// →　連番でファイル生成するときにこの制約ちょっと嫌だな…。
+				if (entry != NULL && StringExtension::EndsWith(entry->d_name, extension))
+				{
+					//cout << entry->d_name << endl;
+					filenames.push_back(Path::Combine(sourceDirectory, entry->d_name));
+				}
+			} while (entry != NULL);
+			closedir(dp);
+		}
+#endif
+
+		return filenames;
 	}
+
 }
 
 // ----------------------------
@@ -726,6 +835,8 @@ namespace Dependency
 // フォルダを作成する。日本語は使っていないものとする。
 // どうもmsys2環境下のgccだと_wmkdir()だとフォルダの作成に失敗する。原因不明。
 // 仕方ないので_mkdir()を用いる。
+// ※　C++17のfilesystemがどの環境でも問題なく動くようになれば、
+//     std::filesystem::create_directories()を用いて書き直すべき。
 
 #if defined(_WIN32)
 // Windows用
@@ -734,20 +845,20 @@ namespace Dependency
 #include <codecvt>	// mkdirするのにwstringが欲しいのでこれが必要
 #include <locale>   // wstring_convertにこれが必要。
 
-namespace Dependency {
-	int mkdir(std::string dir_name)
+namespace Directory {
+	int CreateFolder(const std::string& dir_name)
 	{
-	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> cv;
-	return _wmkdir(cv.from_bytes(dir_name).c_str());
-	//	::CreateDirectory(cv.from_bytes(dir_name).c_str(),NULL);
+		std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> cv;
+		return _wmkdir(cv.from_bytes(dir_name).c_str());
+		//	::CreateDirectory(cv.from_bytes(dir_name).c_str(),NULL);
 	}
 }
 
 #elif defined(__GNUC__) 
 
 #include <direct.h>
-namespace Dependency {
-	int mkdir(std::string dir_name)
+namespace Directory {
+	int CreateFolder(const std::string& dir_name)
 	{
 	return _mkdir(dir_name.c_str());
 	}
@@ -761,8 +872,8 @@ namespace Dependency {
 // Linux用のmkdir実装。
 #include "sys/stat.h"
 
-namespace Dependency {
-	int mkdir(std::string dir_name)
+namespace Directory {
+	int CreateFolder(const std::string& dir_name)
 	{
 	return ::mkdir(dir_name.c_str(), 0777);
 	}
@@ -772,13 +883,28 @@ namespace Dependency {
 // Linux環境かどうかを判定するためにはmakefileを分けないといけなくなってくるな..
 // linuxでフォルダ掘る機能は、とりあえずナシでいいや..。評価関数ファイルの保存にしか使ってないし…。
 
-namespace Dependency {
-	int mkdir(std::string dir_name)
+namespace Directory {
+	int CreateFolder(const std::string& dir_name)
 	{
 		return 0;
 	}
 }
 
 #endif
+
+// --------------------
+//  Dependency Wrapper
+// --------------------
+
+namespace Dependency
+{
+	bool getline(std::ifstream& fs, std::string& s)
+	{
+		bool b = (bool)std::getline(fs, s);
+		s = StringExtension::trim(s);
+		return b;
+	}
+}
+
 
 

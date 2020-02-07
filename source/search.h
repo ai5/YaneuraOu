@@ -61,6 +61,10 @@ namespace Search {
 		// このスレッドがrootから最大、何手目まで探索したか(選択深さの最大)
 		int selDepth = 0;
 
+		// チェスの定跡絡みの変数。将棋では未使用。
+		// int tbRank = 0;
+		// Value tbScore;
+
 		// この指し手で進めたときのpv
 		std::vector<Move> pv;
 	};
@@ -104,6 +108,7 @@ namespace Search {
 		// time[]   : 残り時間(ms換算で)
 		// inc[]    : 1手ごとに増加する時間(フィッシャールール)
 		// npmsec   : 探索node数を思考経過時間の代わりに用いるモードであるかのフラグ(from UCI)
+		// 　　→　将棋と相性がよくないのでこの機能をサポートしないことにする。
 		// movetime : 思考時間固定(0以外が指定してあるなら) : 単位は[ms]
 		TimePoint time[COLOR_NB] , inc[COLOR_NB] , npmsec , movetime;
 

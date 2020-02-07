@@ -73,7 +73,8 @@ enum Stages: int {
 // partial_insertion_sort()は指し手を与えられたlimitまで降順でソートする。
 // limitよりも小さい値の指し手の順序については、不定。
 // 将棋だと指し手の数が多い(ことがある)ので、数が多いときは途中で打ち切ったほうがいいかも。
-// 現状、全体時間の7%程度をこの関数で消費している。
+// 現状、全体時間の6.5～7.5%程度をこの関数で消費している。
+// (長い時間思考させるとこの割合が増えてくる)
 void partial_insertion_sort(ExtMove* begin, ExtMove* end, int limit) {
 
 	for (ExtMove *sortedEnd = begin, *p = begin + 1; p < end; ++p)
@@ -86,6 +87,7 @@ void partial_insertion_sort(ExtMove* begin, ExtMove* end, int limit) {
 			*q = tmp;
 		}
 }
+
 
 // 合法手か判定する
 // ※　やねうら王独自追加。
@@ -163,8 +165,8 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th , const CapturePiec
 	// ProbCutにおいて、SEEが与えられたthresholdの値以上の指し手のみ生成する。
 	// (置換表の指しても、この条件を満たさなければならない)
 	ttMove = ttm
-		&& pseudo_legal(pos, ttm)
 		&& pos.capture(ttm)
+		&& pseudo_legal(pos, ttm)
 		&& pos.see_ge(ttm, threshold) ? ttm : MOVE_NONE;
 
 	// 置換表の指し手がないなら、次のstageから開始する。
@@ -272,9 +274,9 @@ Move MovePicker::select(Pred filter) {
 Move MovePicker::next_move(bool skipQuiets) {
 
 top:
-	switch (stage)
-	{
-	// 置換表の指し手を返すフェーズ
+	switch (stage) {
+
+		// 置換表の指し手を返すフェーズ
 	case MAIN_TT:
 	case EVASION_TT:
 	case QSEARCH_TT:
@@ -282,7 +284,7 @@ top:
 		++stage;
 		return ttMove;
 
-	// 置換表の指し手を返したあとのフェーズ
+		// 置換表の指し手を返したあとのフェーズ
 	case CAPTURE_INIT:
 	case PROBCUT_INIT:
 	case QCAPTURE_INIT:
@@ -300,15 +302,15 @@ top:
 		++stage;
 		goto top;
 
-	// 置換表の指し手を返したあとのフェーズ
-	// (killer moveの前のフェーズなのでkiller除去は不要)
-	// SSEの値が悪いものはbad captureのほうに回す。
+		// 置換表の指し手を返したあとのフェーズ
+		// (killer moveの前のフェーズなのでkiller除去は不要)
+		// SSEの値が悪いものはbad captureのほうに回す。
 	case GOOD_CAPTURE:
 		if (select<Best>([&]() {
-				// moveは駒打ちではないからsee()の内部での駒打ちは判定不要だが…。
-				return pos.see_ge(move, Value(-55 * (cur - 1)->value / 1024)) ?
-						// 損をする捕獲する指し手はあとのほうで試行されるようにendBadCapturesに移動させる
-						true : (*endBadCaptures++ = move, false); }))
+			// moveは駒打ちではないからsee()の内部での駒打ちは判定不要だが…。
+			return pos.see_ge(move, Value(-55 * (cur - 1)->value / 1024)) ?
+				// 損をする捕獲する指し手はあとのほうで試行されるようにendBadCapturesに移動させる
+				true : (*endBadCaptures++ = move, false); }))
 			return move;
 
 			// refutations配列に対して繰り返すためにポインターを準備する。
@@ -317,7 +319,7 @@ top:
 
 			// countermoveがkillerと同じならばそれをskipする。
 			// ※　killer[]は32bit化されている(上位に移動後の駒が格納されている)と仮定している。
-			if (   refutations[0].move == refutations[2].move
+			if (refutations[0].move == refutations[2].move
 				|| refutations[1].move == refutations[2].move)
 				--endMoves;
 
@@ -332,8 +334,8 @@ top:
 		// 直前にCAPTURES_PRO_PLUSで生成している指し手を除外
 		// pseudo_legalでない指し手以外に歩や大駒の不成なども除外
 		if (select<Next>([&]() { return    move != MOVE_NONE
-										&& !pos.capture_or_pawn_promotion(move)
-										&&  pseudo_legal(pos,move); }))
+			&& !pos.capture_or_pawn_promotion(move)
+			&& pseudo_legal(pos, move); }))
 			return move;
 
 		++stage;
@@ -341,20 +343,23 @@ top:
 
 	// 駒を捕獲しない指し手を生成してオーダリング
 	case QUIET_INIT:
-		cur = endBadCaptures;
+		if (!skipQuiets)
+		{
+			cur = endBadCaptures;
 
 #if defined(FOR_TOURNAMENT) 
-		endMoves = generateMoves<NON_CAPTURES_PRO_MINUS>(pos, cur);
+			endMoves = generateMoves<NON_CAPTURES_PRO_MINUS>(pos, cur);
 #else
-		endMoves = Search::Limits.generate_all_legal_moves ? generateMoves<NON_CAPTURES_PRO_MINUS_ALL>(pos, cur) : generateMoves<NON_CAPTURES_PRO_MINUS>(pos, cur);
+			endMoves = Search::Limits.generate_all_legal_moves ? generateMoves<NON_CAPTURES_PRO_MINUS_ALL>(pos, cur) : generateMoves<NON_CAPTURES_PRO_MINUS>(pos, cur);
 #endif
 
-		// 駒を捕獲しない指し手に対してオーダリングのためのスコアをつける
-		score<QUIETS>();
+			// 駒を捕獲しない指し手に対してオーダリングのためのスコアをつける
+			score<QUIETS>();
 
-		// 指し手を部分的にソートする。depthに線形に依存する閾値で。
-		// TODO : このへん係数調整したほうが良いのでは…。
-		partial_insertion_sort(cur, endMoves, -4000 * depth / ONE_PLY);
+			// 指し手を部分的にソートする。depthに線形に依存する閾値で。
+			// TODO : このへん係数調整したほうが良いのでは…。
+			partial_insertion_sort(cur, endMoves, -4000 * depth / ONE_PLY);
+		}
 
 		++stage;
 		/* fallthrough */
