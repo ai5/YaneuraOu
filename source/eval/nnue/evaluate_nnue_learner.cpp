@@ -19,7 +19,13 @@
 #include "evaluate_nnue.h"
 #include "evaluate_nnue_learner.h"
 #include "trainer/features/factorizer_feature_set.h"
+#if defined(EVAL_NNUE_HALFKPE9)
+// halfKPE9の時用のfactorizer
+#include "trainer/features/factorizer_half_kpe9.h"
+#else
+// 通常のNNUEのときのfactorizer
 #include "trainer/features/factorizer_half_kp.h"
+#endif
 #include "trainer/trainer_feature_transformer.h"
 #include "trainer/trainer_input_slice.h"
 #include "trainer/trainer_affine_transform.h"
@@ -36,7 +42,7 @@ namespace {
 std::vector<Example> examples;
 
 // examplesの排他制御をするMutex
-Mutex examples_mutex;
+std::mutex examples_mutex;
 
 // ミニバッチのサンプル数
 u64 batch_size;
@@ -159,7 +165,7 @@ void AddExample(Position& pos, Color rootColor,
     }
   }
 
-  std::lock_guard<Mutex> lock(examples_mutex);
+  std::lock_guard<std::mutex> lock(examples_mutex);
   examples.push_back(std::move(example));
 }
 
@@ -171,7 +177,7 @@ void UpdateParameters(u64 epoch) {
   const auto learning_rate = static_cast<LearnFloatType>(
       get_eta() / batch_size);
 
-  std::lock_guard<Mutex> lock(examples_mutex);
+  std::lock_guard<std::mutex> lock(examples_mutex);
   std::shuffle(examples.begin(), examples.end(), rng);
   while (examples.size() >= batch_size) {
     std::vector<Example> batch(examples.end() - batch_size, examples.end());
@@ -217,9 +223,14 @@ void save_eval(std::string dir_name) {
   const std::string file_name = Path::Combine(eval_dir, NNUE::kFileName);
   std::ofstream stream(file_name, std::ios::binary);
   const bool result = NNUE::WriteParameters(stream);
-  ASSERT(result);
 
-  std::cout << "save_eval() finished. folder = " << eval_dir << std::endl;
+  if (!result)
+  {
+      std::cout << "Error!! : save_eval() failed." << std::endl;
+      Tools::exit();
+  }
+
+  std::cout << "save_eval() finished." << std::endl;
 }
 
 // 現在のetaを取得する

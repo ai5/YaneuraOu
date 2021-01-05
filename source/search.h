@@ -1,6 +1,7 @@
-﻿#ifndef _SEARCH_H_
-#define _SEARCH_H_
+﻿#ifndef _SEARCH_H_INCLUDED_
+#define _SEARCH_H_INCLUDED_
 
+#include "config.h"
 #include "misc.h"
 #include "movepick.h"
 #include "position.h"
@@ -8,6 +9,7 @@
 // 探索関係
 namespace Search {
 
+#if defined(USE_MOVE_PICKER)
 	// countermoves based pruningで使う閾値
 	constexpr int CounterMovePruneThreshold = 0;
 
@@ -25,7 +27,12 @@ namespace Search {
 		Value staticEval;			// 評価関数を呼び出して得た値。NULL MOVEのときに親nodeでの評価値が欲しいので保存しておく。
 		int statScore;				// 一度計算したhistoryの合計値をcacheしておくのに用いる。
 		int moveCount;				// このnodeでdo_move()した生成した何手目の指し手か。(1ならおそらく置換表の指し手だろう)
+
+		bool inCheck;				// この局面で王手がかかっていたかのフラグ
+		bool ttPv;					// 置換表にPV nodeで調べた値が格納されていたか(これは価値が高い)
+		bool ttHit;					// 置換表にhitしたかのフラグ
 	};
+#endif
 
 	// root(探索開始局面)での指し手として使われる。それぞれのroot moveに対して、
 	// その指し手で進めたときのscore(評価値)とPVを持っている。(PVはfail lowしたときには信用できない)
@@ -89,8 +96,7 @@ namespace Search {
 			enteringKingRule = EKR_NONE;
 			silent = bench = consideration_mode = outout_fail_lh_pv = false;
 			pv_interval = 0;
-
-#if !defined(FOR_TOURNAMENT)
+#if defined(USE_GENERATE_ALL_LEGAL_MOVES)
 			generate_all_legal_moves = false;
 #endif
 		}
@@ -158,9 +164,14 @@ namespace Search {
 		// PVの出力間隔(探索のときにMainThread::search()内で初期化する)
 		TimePoint pv_interval;
 
-#if !defined(FOR_TOURNAMENT)
+#if defined (USE_GENERATE_ALL_LEGAL_MOVES)
 		// 全合法手を生成するのか
+		// TANUKI_MATE_ENGINE , YANEURAOU_MATE_ENGINE ではこの設定は無視されている。
 		bool generate_all_legal_moves;
+#endif
+
+#if defined(TANUKI_MATE_ENGINE)
+		std::vector<Move16> pv_check;
 #endif
 	};
 
@@ -175,4 +186,5 @@ namespace Search {
 
 } // end of namespace Search
 
-#endif // _SEARCH_H_
+#endif // _SEARCH_H_INCLUDED_
+

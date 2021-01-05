@@ -30,59 +30,61 @@ namespace USI {
 	// optionのdefault値を設定する。
 	void init(OptionsMap& o)
 	{
-		// Hash上限。32bitモードなら2GB、64bitモードなら1024GB
-		const int MaxHashMB = Is64Bit ? 1024 * 1024 : 2048;
+		// Hash上限。32bitモードなら2GB、64bitモードなら33TB
+		constexpr int MaxHashMB = Is64Bit ? 33554432 : 2048;
 
 		// 並列探索するときのスレッド数
 		// CPUの搭載コア数をデフォルトとすべきかも知れないが余計なお世話のような気もするのでしていない。
 
-		o["Threads"] << Option(4, 1, 512, [](const Option& o) { Threads.set(o); });
+#if !defined(YANEURAOU_ENGINE_DEEP)
 
-		// USIプロトコルでは、"USI_Hash"なのだが、
-		// 置換表サイズを変更しての自己対戦などをさせたいので、
-		// 片方だけ変更できなければならない。
-		// ゆえにGUIでの対局設定は無視して、思考エンジンの設定ダイアログのところで
-		// 個別設定が出来るようにする。
+		// ※　やねうら王独自改良
+		// スレッド数の変更やUSI_Hashのメモリ確保をそのハンドラでやってしまうと、
+		// そのあとThreadIdOffsetや、LargePageEnableを送られても困ることになる。
+		// ゆえにこれらは、"isready"に対する応答で行うことにする。
+		// そもそもで言うとsetoptionに対してそんなに時間のかかることをするとGUI側がtimeoutになる懸念もある。
+		// Stockfishもこうすべきだと思う。
 
-#if !defined(MATE_ENGINE)
+		o["Threads"] << Option(4, 1, 512, [](const Option& o) { /* Threads.set(o); */ });
+#endif
+
+#if !defined(TANUKI_MATE_ENGINE) && !defined(YANEURAOU_MATE_ENGINE)
 		// 置換表のサイズ。[MB]で指定。
-		o["Hash"] << Option(16, 1, MaxHashMB, [](const Option&o) { TT.resize(o); });
+		o["USI_Hash"] << Option(16, 1, MaxHashMB, [](const Option&o) { /* TT.resize(o); */ });
 
-#if defined(USE_EVAL_HASH)
+	#if defined(USE_EVAL_HASH)
 		// 評価値用のcacheサイズ。[MB]で指定。
 
-#if defined(FOR_TOURNAMENT)
+		#if defined(FOR_TOURNAMENT)
 		// トーナメント用は少し大きなサイズ
 		o["EvalHash"] << Option(1024, 1, MaxHashMB, [](const Option& o) { Eval::EvalHash_Resize(o); });
-#else
+		#else
 		o["EvalHash"] << Option(128, 1, MaxHashMB, [](const Option& o) { Eval::EvalHash_Resize(o); });
-#endif
-
-#endif
+		#endif // defined(FOR_TOURNAMENT)
+	#endif // defined(USE_EVAL_HASH)
 
 		o["USI_Ponder"] << Option(false);
 
 		// その局面での上位N個の候補手を調べる機能
 		o["MultiPV"] << Option(1, 1, 800);
 
-		// 弱くするために調整する。20なら手加減なし。0が最弱。
-		o["USI_SkillLevel"] << Option(20, 0, 20);
-#else
-		o["Hash"] << Option(4096, 1, MaxHashMB);
-#endif
-
-		// cin/coutの入出力をファイルにリダイレクトする
-		o["WriteDebugLog"] << Option(false, [](const Option& o) { start_logger(o); });
+		// 指し手がGUIに届くまでの時間。
+	#if defined(YANEURAOU_ENGINE_DEEP)
+			// GPUからの結果を待っている時間も込みなので少し上げておく。
+			int time_margin = 400;
+	#else
+			int time_margin = 120;
+	#endif
 
 		// ネットワークの平均遅延時間[ms]
 		// この時間だけ早めに指せばだいたい間に合う。
 		// 切れ負けの瞬間は、NetworkDelayのほうなので大丈夫。
-		o["NetworkDelay"] << Option(120, 0, 10000);
+		o["NetworkDelay"] << Option(time_margin, 0, 10000);
 
 		// ネットワークの最大遅延時間[ms]
 		// 切れ負けの瞬間だけはこの時間だけ早めに指す。
 		// 1.2秒ほど早く指さないとfloodgateで切れ負けしかねない。
-		o["NetworkDelay2"] << Option(1120, 0, 10000);
+		o["NetworkDelay2"] << Option(time_margin + 1000, 0, 10000);
 
 		// 最小思考時間[ms]
 		o["MinimumThinkingTime"] << Option(2000, 1000, 100000);
@@ -101,28 +103,6 @@ namespace USI {
 		// 探索ノード制限。0なら無制限。
 		o["NodesLimit"] << Option(0, 0, INT64_MAX);
 
-		// 引き分けを受け入れるスコア
-		// 歩を100とする。例えば、この値を100にすると引き分けの局面は評価値が -100とみなされる。
-
-		// 千日手での引き分けを回避しやすくなるように、デフォルト値を2に変更した。[2017/06/03]
-		// ちなみに、2にしてあるのは、
-		//  int contempt = Options["Contempt"] * PawnValue / 100; でPawnValueが100より小さいので
-		// 1だと切り捨てられてしまうからである。
-
-		o["Contempt"] << Option(2, -30000, 30000);
-
-		// Contemptの設定値を先手番から見た値とするオプション。Stockfishからの独自拡張。
-		// 先手のときは千日手を狙いたくなくて、後手のときは千日手を狙いたいような場合、
-		// このオプションをオンにすれば、Contemptをそういう解釈にしてくれる。
-		// この値がtrueのときは、Contemptを常に先手から見たスコアだとみなす。
-
-		o["ContemptFromBlack"] << Option(false);
-
-#if defined (USE_ENTERING_KING_WIN)
-		// 入玉ルール
-		o["EnteringKingRule"] << Option(USI::ekr_rules, USI::ekr_rules[EKR_27_POINT]);
-#endif
-
 		// 評価関数フォルダ。これを変更したとき、評価関数を次のisreadyタイミングで読み直す必要がある。
 		last_eval_dir = "eval";
 		o["EvalDir"] << Option("eval", [](const USI::Option&o) {
@@ -134,11 +114,35 @@ namespace USI {
 			}
 		});
 
+#else
+		
+		// TANUKI_MATE_ENGINEのとき
+		o["USI_Hash"] << Option(4096, 1, MaxHashMB);
+
+#endif // !defined(TANUKI_MATE_ENGINE) && !defined(YANEURAOU_MATE_ENGINE)
+
+		// cin/coutの入出力をファイルにリダイレクトする
+		o["WriteDebugLog"] << Option(false, [](const Option& o) { start_logger(o); });
+
+
+#if defined (USE_ENTERING_KING_WIN)
+		// 入玉ルール
+		o["EnteringKingRule"] << Option(USI::ekr_rules, USI::ekr_rules[EKR_27_POINT]);
+#endif
+
+#if defined(USE_GENERATE_ALL_LEGAL_MOVES)
+		// 読みの各局面ですべての合法手を生成する
+		// (普通、歩の2段目での不成などは指し手自体を生成しないのですが、これのせいで不成が必要な詰みが絡む問題が解けないことが
+		// あるので、このオプションを用意しました。トーナメントモードではこのオプションは無効化されます。)
+		o["GenerateAllLegalMoves"] << Option(false);
+#endif
+
+
 #if defined (USE_SHARED_MEMORY_IN_EVAL) && defined(_WIN32) && \
 	 (defined(EVAL_KPPT) || defined(EVAL_KPP_KKPT) )
-		// 評価関数パラメーターを共有するか
-		// 異種評価関数との自己対局のときにこの設定で引っかかる人が後を絶たないのでデフォルトでオフにする。
-		o["EvalShare"] << Option(false);
+		// 評価関数パラメーターを共有するか。
+		// デフォルトで有効に変更。(V4.90～)
+		o["EvalShare"] << Option(true);
 #endif
 
 #if defined(EVAL_LEARN)
@@ -150,11 +154,23 @@ namespace USI {
 		o["SkipLoadingEval"] << Option(false);
 #endif
 
-#if !defined(MATE_ENGINE) && !defined(FOR_TOURNAMENT)
-		// 読みの各局面ですべての合法手を生成する
-		// (普通、歩の2段目での不成などは指し手自体を生成しないのですが、これのせいで不成が必要な詰みが絡む問題が解けないことが
-		// あるので、このオプションを用意しました。トーナメントモードではこのオプションは無効化されます。)
-		o["GenerateAllLegalMoves"] << Option(false);
+#if defined(_WIN32)
+		// 3990XのようなWindows上で複数のプロセッサグループを持つCPUで、思考エンジンを同時起動したときに
+		// 同じプロセッサグループに割り当てられてしまうのを避けるために、スレッドオフセットを
+		// 指定できるようにしておく。
+		// 例) 128スレッドあって、4つ思考エンジンを起動してそれぞれにThreads = 32を指定する場合、
+		// それぞれの思考エンジンにはThreadIdOffset = 0,32,64,96をそれぞれ指定する。
+		// (プロセッサグループは64論理コアごとに1つ作られる。上のケースでは、ThreadIdOffset = 0,0,64,64でも同じ意味。)
+		//	※　1つのPCで複数の思考エンジンを同時に起動して対局させる場合はこれを適切に設定すべき。
+
+		o["ThreadIdOffset"] << Option(0, 0, std::thread::hardware_concurrency() - 1);
+#endif
+
+#if defined(_WIN64)
+		// LargePageを有効化するか。
+		// これを無効化できないと自己対局の時に片側のエンジンだけがLargePageを使うことがあり、
+		// 不公平になるため、無効化する方法が必要であった。
+		o["LargePageEnable"] << Option(true);
 #endif
 
 		// 各エンジンがOptionを追加したいだろうから、コールバックする。
@@ -313,7 +329,7 @@ namespace USI {
 		string name, value, option_type;
 		int64_t min_value = 0, max_value = 1;
 		std::vector<string> combo_list;
-		while (!scanner.eof())
+		while (!scanner.eol())
 		{
 			auto token = scanner.get_text();
 			if (token == "name") name = scanner.get_text();
@@ -350,7 +366,7 @@ namespace USI {
 		if (!ifs.fail())
 		{
 			std::string str;
-			while (Dependency::getline(ifs, str))
+			while (Tools::getline(ifs, str))
 				build_option(str);
 		}
 	}

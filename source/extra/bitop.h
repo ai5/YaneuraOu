@@ -27,9 +27,11 @@
 #include <nmmintrin.h>
 #elif defined(USE_SSE41)
 #include <smmintrin.h>
+#elif defined(USE_SSSE3)
+#include <tmmintrin.h>
 #elif defined(USE_SSE2)
 #include <emmintrin.h>
-#elif defined(IS_ARM)
+#elif defined(USE_NEON)
 #include <arm_neon.h>
 #include <mm_malloc.h> // for _mm_alloc()
 #else
@@ -69,11 +71,15 @@ typedef  int64_t s64;
 //      PEXT(AVX2の命令)
 // ----------------------------
 
-#ifdef USE_AVX2
+#if defined(USE_AVX2) && defined(USE_BMI2)
 
-// for AVX2 : hardwareによるpext実装
+// for BMI2 : hardwareによるpext実装
+
+// ZEN/ZEN2では、PEXT命令はμOPでのemulationで実装されているらしく、すこぶる遅いらしい。
+// PEXT命令を使わず、この下にあるsoftware emulationによるPEXT実装を用いたほうがまだマシらしい。(どうなってんの…)
+
 #define PEXT32(a,b) _pext_u32((u32)(a),(u32)(b))
-#ifdef IS_64BIT
+#if defined (IS_64BIT)
 #define PEXT64(a,b) _pext_u64(a,b)
 #else
 // PEXT32を2回使った64bitのPEXTのemulation
@@ -82,7 +88,8 @@ typedef  int64_t s64;
 
 #else
 
-// for non-AVX2 : software emulationによるpext実装(やや遅い。とりあえず動くというだけ。)
+// for non-BMI2 : software emulationによるpext実装(やや遅い。とりあえず動くというだけ。)
+// ただし64-bitでもまとめて処理できる点や、magic bitboardのような巨大テーブルを用いない点において優れている(かも)
 inline uint64_t pext(uint64_t val, uint64_t mask)
 {
   uint64_t res = 0;
@@ -101,20 +108,14 @@ inline uint64_t PEXT64(uint64_t a, uint64_t b) { return pext(a, b); }
 
 #endif
 
+
 // ----------------------------
 //     POPCNT(SSE4.2の命令)
 // ----------------------------
 
-#if defined(IS_ARM)
-#define POPCNT32(a) __builtin_popcount(a)
-#define POPCNT64(a) __builtin_popcountll(a)
+#if defined (USE_SSE42)
 
-#elif defined(USE_SSE42)
-
-// for SSE4.2
-#include <nmmintrin.h>
-
-#ifdef IS_64BIT
+#if defined (IS_64BIT)
 #define POPCNT32(a) _mm_popcnt_u32(a)
 #define POPCNT64(a) _mm_popcnt_u64(a)
 #else
@@ -150,9 +151,8 @@ inline int32_t POPCNT64(uint64_t a) {
 // ----------------------------
 
 #if defined(_MSC_VER) && !defined(__INTEL_COMPILER) // && defined(_WIN64)
-#include <intrin.h>
 
-#ifdef IS_64BIT
+#if defined (IS_64BIT)
 // 1である最下位のbitのbit位置を得る。0を渡してはならない。
 FORCE_INLINE int LSB32(uint32_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanForward(&index, v); return index; }
 FORCE_INLINE int LSB64(uint64_t v) { ASSERT_LV3(v != 0); unsigned long index; _BitScanForward64(&index, v); return index; }
@@ -184,7 +184,7 @@ FORCE_INLINE int MSB64(const u64 v) { ASSERT_LV3(v != 0); return 63 ^ __builtin_
 //  ymm(256bit register class)
 // ----------------------------
 
-#ifdef USE_AVX2
+#if defined (USE_AVX2)
 
 // Byteboardの直列化で使うAVX2命令
 struct alignas(32) ymm
@@ -285,19 +285,13 @@ extern ymm ymm_zero;  // all packed bytes are 0.
 extern ymm ymm_one;   // all packed bytes are 1.
 
 // ----------------------------
-//    custom allocator
-// ----------------------------
-
-extern void* aligned_malloc(size_t size, size_t align);
-static void aligned_free(void* ptr) { _mm_free(ptr); }
-
-// ----------------------------
 //    BSLR
 // ----------------------------
 
 // 最下位bitをresetする命令。
 
-#if (defined(USE_AVX2) && defined(IS_64BIT))
+#if defined(USE_AVX2) & defined(IS_64BIT)
+// これは、BMI1の命令であり、ZEN1/ZEN2であっても使ったほうが速い。
 #define BLSR(x) _blsr_u64(x)
 #else
 #define BLSR(x) (x & (x-1))

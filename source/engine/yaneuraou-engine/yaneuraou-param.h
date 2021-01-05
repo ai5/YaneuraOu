@@ -1,6 +1,23 @@
 ﻿#ifndef YANEURAOU_PARAM_H_INCLUDED
 #define YANEURAOU_PARAM_H_INCLUDED
 
+// yaneuraou-param.h : 元ファイル
+// param_conv.pyというPythonのスクリプトにより、以下のファイルは自動生成されます。
+// 1) yaneuraou - param - extern.h
+// 2) yaneuraou - param - array.h
+// 3) yaneuraou - param - string.h
+// 1),2),3)のファイルは手で編集しないでください。
+
+
+//#if  defined(GENSFEN2019)
+// 教師局面生成用のパラメーター
+// 低depthで強くする ≒ 低depth時の枝刈りを甘くする。
+//#include "yaneuraou-param_gen.h"
+//  →　教師生成時と学習時の探索部の性質が違うのはNNUE型にとってよくないようなのだが、
+//     これはたぶん許容範囲。
+
+//#else
+
 // パラメーターの説明に "fixed"と書いてあるパラメーターはランダムパラメーター化するときでも変化しない。
 // 「前提depth」は、これ以上ならその枝刈りを適用する(かも)の意味。
 // 「適用depth」は、これ以下ならその枝刈りを適用する(かも)の意味。
@@ -13,59 +30,64 @@
 //
 
 // 深さに比例したfutility pruning
-// depth手先で評価値が変動する幅が = depth * (PARAM_FUTILITY_MARGIN_ALPHA1 - improving*PARAM_FUTILITY_MARGIN_ALPHA2)
-// 元の値 = 175
-// [PARAM] min:100,max:240,step:2,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_MARGIN_ALPHA1 = 172;
-
-// 元の値 = 50
-// [PARAM] min:25,max:100,step:2,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_MARGIN_ALPHA2 = 50;
-
+// 元の値 = 224 , step = 20
+// [PARAM] min:100,max:300,step:3,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_FUTILITY_MARGIN_ALPHA1 = 186;
 
 // 
 
-// 元の値 = 200
+// 元の値 = 170 , step = 20
 // [PARAM] min:100,max:240,step:2,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_MARGIN_BETA = 195;
+PARAM_DEFINE PARAM_FUTILITY_MARGIN_BETA = 165;
 
 
 // 静止探索でのfutility pruning
-// 元の値 = 128
-// [PARAM] min:50,max:160,step:5,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_MARGIN_QUIET = 145;
+// 元の値 = 155 , step = 10
+// [PARAM] min:50,max:200,step:2,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_FUTILITY_MARGIN_QUIET = 132;
 
 // futility pruningの適用depth。
 // この制限自体が要らない可能性がある。→　そうでもなかった。
-// 元の値 = 7
+// 元の値 = 8 , step = 1
 // [PARAM] min:5,max:15,step:1,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_RETURN_DEPTH = 9;
+PARAM_DEFINE PARAM_FUTILITY_RETURN_DEPTH = 8;
 
 // 親nodeでのfutilityの適用depth。
 // この枝刈り、depthの制限自体が要らないような気がする。→　そうでもなかった。
 // 元の値 = 7
 // [PARAM] min:5,max:20,step:1,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_DEPTH = 12;
+PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_DEPTH = 7;
 
 // 親nodeでのfutility margin
-// 元の値 = 256
-// [PARAM] min:100,max:300,step:5,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_MARGIN1 = 256;
+// 元の値 = 266 , step = 20
+// [PARAM] min:100,max:400,step:3,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_MARGIN1 = 266;
 
-// staticEvalから減算するmargin
-// 元の値 = 200
-// [PARAM] min:0,max:300,step:25,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_MARGIN2 = 248;
+// 元の値 = 30
+// [PARAM] min:20,max:50,step:2,interval:2,time_rate:1,fixed
+PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_GAMMA1 = 30;
 
-// depthが2乗されるので影響大きい
-// 元の値 = 35
-// [PARAM] min:20,max:50,step:1,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_GAMMA1 = 40;
+// lmrのときのdepthの上限値。(これを超えるdepthは、↓この値とみなす)
+// 元の値 = 18 , step = 1
+// [PARAM] min:10,max:30,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_GAMMA2 = 19;
 
-// depthが2乗されるので影響大きい
-// 元の値 = 35
-// [PARAM] min:20,max:60,step:3,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_GAMMA2 = 51;
+// lmrのときのseeの値。
+// 元の値 = 221 ,step = 40
+// [PARAM] min:0,max:300,step:3,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_LMR_SEE_MARGIN1 = 236;
+
+
+// Reductionの計算式に出てくる定数
+// 元の値 = 503 ,step = 16
+// [PARAM] min:0,max:1024,step:3,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_REDUCTION_ALPHA = 477;
+
+// Reductionの計算式に出てくる定数
+// このパラメーター怖くて調整できない。
+// 元の値 = 915 , step = 128
+// [PARAM] min:600,max:1500,step:128,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_REDUCTION_BETA = 915;
 
 //
 // null move dynamic pruning
@@ -74,22 +96,47 @@ PARAM_DEFINE PARAM_FUTILITY_AT_PARENT_NODE_GAMMA2 = 51;
 // null move dynamic pruningのときの
 //  Reduction = (α + β * depth ) / 256 + ...みたいなαとβ
 
-// 元の値 = 823
+// 元の値 = 1015 , step = 50
 // [PARAM] min:500,max:1500,step:5,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_NULL_MOVE_DYNAMIC_ALPHA = 818;
+PARAM_DEFINE PARAM_NULL_MOVE_DYNAMIC_ALPHA = 1015;
 
-// 元の値 = 67
-// [PARAM] min:50,max:100,step:8,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_NULL_MOVE_DYNAMIC_BETA = 67;
+// 元の値 = 85 , step = 15
+// [PARAM] min:50,max:120,step:3,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_NULL_MOVE_DYNAMIC_BETA = 97;
 
-// 元の値 = 35
+// 元の値 = 191 , step = 40
+// [PARAM] min:50,max:400,step:5,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_NULL_MOVE_DYNAMIC_GAMMA = 191;
+
+
+// 元の値 = 22977 , step = 8000
+// [PARAM] min:0,max:50000,step:500,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_NULL_MOVE_MARGIN0 = 24477;
+
+// 元の値 = 30
+// [PARAM] min:10,max:60,step:2,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_NULL_MOVE_MARGIN1 = 28;
+
+// 元の値 = 28 , step = 2
 // [PARAM] min:10,max:60,step:1,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_NULL_MOVE_MARGIN = 31;
+PARAM_DEFINE PARAM_NULL_MOVE_MARGIN2 = 29;
+
+// 元の値 = 84 , step = 4
+// [PARAM] min:10,max:100,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_NULL_MOVE_MARGIN3 = 84;
+
+// 元の値 = 168 , step = 50
+// [PARAM] min:0,max:400,step:5,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_NULL_MOVE_MARGIN4 = 168;
+
+
 
 // null moveでbeta値を上回ったときに、これ以下ならreturnするdepth。適用depth。
-// 元の値 = 12
+// 元の値 = 13
+// 他のNULL_MOVEの値が悪いと、この枝刈りを適用しないほうが強くなるわけで、
+// このdepthがどんどん高い値に発散してしまうので注意。
 // [PARAM] min:4,max:16,step:1,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_NULL_MOVE_RETURN_DEPTH = 14;
+PARAM_DEFINE PARAM_NULL_MOVE_RETURN_DEPTH = 13;
 
 
 //
@@ -97,20 +144,21 @@ PARAM_DEFINE PARAM_NULL_MOVE_RETURN_DEPTH = 14;
 //
 
 // probcutの前提depth
-// 元の値 = 5
+// 元の値 = 4
 // [PARAM] min:3,max:10,step:1,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_PROBCUT_DEPTH = 5;
+PARAM_DEFINE PARAM_PROBCUT_DEPTH = 4;
 
 // probcutのmargin
 //    式 = beta + PARAM_PROBCUT_MARGIN1 - improving * PARAM_PROBCUT_MARGIN2
 //   improvingの効果怪しいので抑え気味にしておく。
-// 元の値 = 216
+// 元の値 = 183
 // [PARAM] min:100,max:300,step:3,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_PROBCUT_MARGIN1 = 194 + 16/2;
+PARAM_DEFINE PARAM_PROBCUT_MARGIN1 = 199;
 
-// 元の値 = 48
-// [PARAM] min:20,max:80,step:2,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_PROBCUT_MARGIN2 = 48/2;
+// 元の値 = 49 , step = 5
+// [PARAM] min:20,max:80,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_PROBCUT_MARGIN2 = 49;
+
 
 //
 // singular extension
@@ -119,90 +167,53 @@ PARAM_DEFINE PARAM_PROBCUT_MARGIN2 = 48/2;
 // singular extensionの前提depth。
 // これ変更すると他のパラメーターががらっと変わるので固定しておく。
 // 10秒設定だと6か8あたりに局所解があるようだ。
-// 元の値 = 8
-// [PARAM] min:4,max:13,step:1,interval:1,time_rate:1,fixed
+// 元の値 = 7 , step = 1
+// [PARAM] min:4,max:13,step:1,interval:2,time_rate:1,fixed
 PARAM_DEFINE PARAM_SINGULAR_EXTENSION_DEPTH = 7;
 
 // singular extensionのmarginを計算するときの係数
-// rBeta = std::max(ttValue - PARAM_SINGULAR_MARGIN * depth / (8 * ONE_PLY), -VALUE_MATE);
-// 元の値 = 256
-// [PARAM] min:128,max:400,step:4,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_SINGULAR_MARGIN = 194;
-
-// singular extensionで浅い探索をするときの深さに関する係数
-// このパラメーター、長い時間でないと調整できないし下手に調整すべきではない。
-// 元の値 = 16
-// [PARAM] min:8,max:32,step:2,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_SINGULAR_SEARCH_DEPTH_ALPHA = 20;
+// 元の値 = 4 , step = 1
+// [PARAM] min:0,max:10,step:1,interval:2,time_rate:1,fixed
+PARAM_DEFINE PARAM_SINGULAR_MARGIN = 4;
 
 
 //
-// pruning by move count,history,etc..
+// pruning by history
 //
-
-// move countによる枝刈りをする深さ。適用depth。
-// 元の値 = 16
-// [PARAM] min:8,max:32,step:1,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_PRUNING_BY_MOVE_COUNT_DEPTH = 16;
 
 // historyによる枝刈りをする深さ。適用depth。
-// これ、将棋ではそこそこ上げたほうが長い時間では良さげ。
-// 元の値 = 3
-// [PARAM] min:2,max:32,step:1,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_PRUNING_BY_HISTORY_DEPTH = 9;
+// Stockfish10からこの値を大きくしすぎると良くないようだ。
+// 元の値 = 4 , step = 1
+// [PARAM] min:2,max:16,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_PRUNING_BY_HISTORY_DEPTH = 4;
 
 
 // historyの値によってreductionするときの係数
-// これ、元のが (hist - 8000) / 20000みたいな意味ありげな値なので下手に変更しないほうが良さげ。
-// 元の値 = 4000
-// [PARAM] min:2000,max:8000,step:100,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_REDUCTION_BY_HISTORY = 4000;
+// 元の値 = 5278 , step = 500
+// [PARAM] min:2000,max:8000,step:250,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_REDUCTION_BY_HISTORY = 4828;
 
 
 //
 // razoring pruning
 // 
 
-// この値は、未使用。razoringはdepth < ONE_PLYでは行わないため。
-// 元の値 = 0
-// [PARAM] min:0,max:0,step:1,interval:2,time_rate:1,fixed
-PARAM_DEFINE PARAM_RAZORING_MARGIN1 = 0;
-
-// 以下、変更しても計測できるほどの差ではないようなので元の値にしておく。
-// 元の値 = 590
-// [PARAM] min:400,max:700,step:10,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_RAZORING_MARGIN2 = 590;
-
-// 元の値 = 604
-// [PARAM] min:400,max:700,step:5,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_RAZORING_MARGIN3 = 604;
-
-
-//
-// LMR reduction table
-//
-
-// 元の値 = 131
-// [PARAM] min:64,max:256,step:2,interval:1,time_rate:1,fixed
-PARAM_DEFINE PARAM_REDUCTION_ALPHA = 135;
+// 以下、変更しても計測できるほどの差ではないようだが。
+// 元の値 = 510 , step = 100
+// [PARAM] min:400,max:700,step:3,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_RAZORING_MARGIN = 515;
 
 
 //
 // etc..
 // 
 
-// この個数までquietの指し手を登録してhistoryなどを増減させる。
-// 元の値 = 64
-// 将棋では駒打ちがあるから少し増やしたほうがいいかも。
-// →　そうでもなかった。固定しておく。
-// historyの計算でこの64に基づいた値を使っている箇所があるからのような気がする。よく考える。
-// [PARAM] min:32,max:128,step:2,interval:2,time_rate:1,fixed
-PARAM_DEFINE PARAM_QUIET_SEARCH_COUNT = 64;
-
-
 // 静止探索での1手詰め
 // 元の値 = 1
 // →　1スレ2秒で対技巧だと有りのほうが強かったので固定しておく。
+// NNUEだと、これ無しのほうが良い可能性がある。
+// いったん無しでやって最後に有りに変更して有効か見る。
+// 2スレ1,2秒程度だと無しと有意差がなかったが、4秒～8秒では、有りのほうが+R30ぐらい強い。
 // [PARAM] min:0,max:1,step:1,interval:1,time_rate:1,fixed
 PARAM_DEFINE PARAM_QSEARCH_MATE1 = 1;
 
@@ -214,21 +225,69 @@ PARAM_DEFINE PARAM_QSEARCH_MATE1 = 1;
 PARAM_DEFINE PARAM_SEARCH_MATE1 = 1;
 
 // 1手詰めではなくN手詰めを用いる
+// ※　3手,5手はコストに見合わないようだ。
 // 元の値 = 1
 // [PARAM] min:1,max:5,step:2,interval:1,time_rate:1,fixed
 PARAM_DEFINE PARAM_WEAK_MATE_PLY = 1;
 
 
-// aspiration searchの増加量
-// 元の値 = 15
-// [PARAM] min:12,max:40,step:1,interval:2,time_rate:1,fixed
-PARAM_DEFINE PARAM_ASPIRATION_SEARCH_DELTA = 16;
+// qsearch()でnull moveのときもevaluate()を呼び出す。
+// この値が0(false)ならば、null moveのときはeval = 前局面にEval::Tempoを加算した値 とする。
+// 計測できる差にならない。
+// PARAM_EVAL_TEMPOを変動させていると(適正値から離れていると)、
+// evaluate()を呼び出したほうが良いことになってしまうのでこれが1のときのほうが良いことになってしまうので注意。
+// 元の値 = 1 , step = 1
+// [PARAM] min:0,max:1,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE PARAM_QSEARCH_FORCE_EVAL = 0;
+
+
+// aspiration searchの増加量。
+// 古い評価関数では20ぐらいがベストだったが、NNUEでは17がベストのようだ。
+// 元の値 = 17 , step = 1
+// [PARAM] min:12,max:40,step:1,interval:2,time_rate:1, fixed
+PARAM_DEFINE PARAM_ASPIRATION_SEARCH_DELTA = 17;
+
 
 
 // 評価関数での手番の価値
-// 元の値 = 20
-// [PARAM] min:10,max:50,step:5,interval:2,time_rate:1,fixed
+// 元の値 = 20 , step = 2
+// [PARAM] min:10,max:50,step:1,interval:1,time_rate:1,fixed
 PARAM_DEFINE PARAM_EVAL_TEMPO = 20;
 
+// MovePickerの quietのvalue計算用の係数
 
+
+// 元の値 = 32 , step = 4
+// [PARAM] min:10,max:50,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE MOVE_PICKER_Q_PARAM1 = 34;
+
+// 元の値 = 32 , step = 4
+// [PARAM] min:10,max:50,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE MOVE_PICKER_Q_PARAM2 = 37;
+
+// 元の値 = 32 , step = 4
+// [PARAM] min:10,max:50,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE MOVE_PICKER_Q_PARAM3 = 33;
+
+// 元の値 = 16 , step = 4
+// [PARAM] min:10,max:50,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE MOVE_PICKER_Q_PARAM4 = 12;
+
+// 元の値 = 16 , step = 4
+// [PARAM] min:10,max:50,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE MOVE_PICKER_Q_PARAM5 = 18;
+
+
+// ABテスト用
+// [PARAM] min:0,max:1,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE AB_TEST1 = 1;
+
+// ABテスト用
+// [PARAM] min:0,max:1,step:1,interval:1,time_rate:1,fixed
+PARAM_DEFINE AB_TEST2 = 1;
+
+
+
+//#endif // defined(GENSFEN2019)
 #endif
+
