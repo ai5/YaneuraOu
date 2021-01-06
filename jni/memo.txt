@@ -1,6 +1,71 @@
 ■コマンド
 YaneuraOu bench [32 1 17]
 
+○ver 6.0
+
+・x86_64
+
+info depth 17 seldepth 28 score cp -483 nodes 1305833 nps 747471 hashfull 275 time 1747 pv B*6h 4a3b+ 5i7i+ 8h9h 7i9i 9h8g 6h7g+ 8g7g 9i9g G*8g L*7d N*7f 8d8f B*3c 2b3c S*2e 2d1c B*3a G*2b 2e1d 1c1b 3a8f+ B*9i 7g6h 2b3b 8f9g 9i5e+
+bestmove B*6h ponder 4a3b+
+
+info depth 17 seldepth 30 score cp -1123 nodes 1276856 nps 763213 hashfull 265 time 1673 pv N*4d 5b5c S*4b 2d4b 6f5g G*7i 6i5h 2g3g L*4f P*4e G*3d 2f2h+ 5i4h 3g4h 5h6g S*7f 6g5f 4h4g 5f4g S*3g 4g5f
+bestmove N*4d ponder 5b5c
+
+info depth 17 seldepth 27 score cp -6215 nodes 2308468 nps 942231 hashfull 406 time 2450 pv G*3c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b3c S*3i 3h3i 2b3c S*2c 3c2c 2d2c+ 4c2c R*4b N*3b
+bestmove G*3c ponder 4b3b
+
+===========================
+Total time (ms) : 5869
+Nodes searched  : 4891157
+Nodes/second    : 833388
+
+
+・x86
+info depth 17 seldepth 28 score cp -483 nodes 1305833 nps 278964 hashfull 275 time 4681 pv B*6h 4a3b+ 5i7i+ 8h9h 7i9i 9h8g 6h7g+ 8g7g 9i9g G*8g L*7d N*7f 8d8f B*3c 2b3c S*2e 2d1c B*3a G*2b 2e1d 1c1b 3a8f+ B*9i 7g6h 2b3b 8f9g 9i5e+
+bestmove B*6h ponder 4a3b+
+
+info depth 17 seldepth 30 score cp -1123 nodes 1276856 nps 302214 hashfull 265 time 4225 pv N*4d 5b5c S*4b 2d4b 6f5g G*7i 6i5h 2g3g L*4f P*4e G*3d 2f2h+ 5i4h 3g4h 5h6g S*7f 6g5f 4h4g 5f4g S*3g 4g5f
+bestmove N*4d ponder 5b5c
+
+info depth 17 seldepth 27 score cp -6215 nodes 2308468 nps 336511 hashfull 406 time 6860 pv G*3c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b3c S*3i 3h3i 2b3c S*2c 3c2c 2d2c+ 4c2c R*4b N*3b
+bestmove G*3c ponder 4b3b
+
+===========================
+Total time (ms) : 15765
+Nodes searched  : 4891157
+Nodes/second    : 310254
+
+・armeabi-v7a
+info depth 17 seldepth 28 score cp -483 nodes 1305833 nps 218220 hashfull 275 time 5984 pv B*6h 4a3b+ 5i7i+ 8h9h 7i9i 9h8g 6h7g+ 8g7g 9i9g G*8g L*7d N*7f 8d8f B*3c 2b3c S*2e 2d1c B*3a G*2b 2e1d 1c1b 3a8f+ B*9i 7g6h 2b3b 8f9g 9i5e+
+bestmove B*6h ponder 4a3b+
+
+info depth 17 seldepth 30 score cp -1123 nodes 1276856 nps 215321 hashfull 265 time 5930 pv N*4d 5b5c S*4b 2d4b 6f5g G*7i 6i5h 2g3g L*4f P*4e G*3d 2f2h+ 5i4h 3g4h 5h6g S*7f 6g5f 4h4g 5f4g S*3g 4g5f
+bestmove N*4d ponder 5b5c
+
+info depth 17 seldepth 27 score cp -6215 nodes 2308468 nps 277493 hashfull 406 time 8319 pv G*3c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b3c S*3i 3h3i 2b3c S*2c 3c2c 2d2c+ 4c2c R*4b N*3b
+bestmove G*3c ponder 4b3b
+
+===========================
+Total time (ms) : 20233
+Nodes searched  : 4891157
+Nodes/second    : 241741
+
+・arm64 v8a
+info depth 17 seldepth 28 score cp -483 nodes 1305833 nps 286429 hashfull 275 time 4559 pv B*6h 4a3b+ 5i7i+ 8h9h 7i9i 9h8g 6h7g+ 8g7g 9i9g G*8g L*7d N*7f 8d8f B*3c 2b3c S*2e 2d1c B*3a G*2b 2e1d 1c1b 3a8f+ B*9i 7g6h 2b3b 8f9g 9i5e+
+bestmove B*6h ponder 4a3b+
+
+info depth 17 seldepth 30 score cp -1123 nodes 1276856 nps 279644 hashfull 265 time 4566 pv N*4d 5b5c S*4b 2d4b 6f5g G*7i 6i5h 2g3g L*4f P*4e G*3d 2f2h+ 5i4h 3g4h 5h6g S*7f 6g5f 4h4g 5f4g S*3g 4g5f
+bestmove N*4d ponder 5b5c
+
+info depth 17 seldepth 27 score cp -6215 nodes 2308468 nps 370481 hashfull 406 time 6231 pv G*3c 4b3b S*2h 9h2h 3i2h+ 2i2h R*4h G*3h 4h4c+ 3b3c S*3i 3h3i 2b3c S*2c 3c2c 2d2c+ 4c2c R*4b N*3b
+bestmove G*3c ponder 4b3b
+
+===========================
+Total time (ms) : 15358
+Nodes searched  : 4891157
+Nodes/second    : 318476
+
+
 〇ver 4.88 NNUE コミット: 97082f0c03935bdac50819b4e4664f0347d9287d [97082f0]マージ分
 
 ・x86_64
